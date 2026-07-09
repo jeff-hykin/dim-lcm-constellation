@@ -18,14 +18,17 @@ limitations under the License.
 <head>
 <meta charset="utf-8">
 <title>Dimensional · Transport Flow</title>
+<link rel="stylesheet" href="/assets/theme.css" />
 <style>
-  :root {
-    --bg: #07090a;
-    --cyan: #00eeee;
-    --line: rgba(0, 238, 238, 0.16);
-    --text: #c9e8f2;
-    --mut: #5d7e8a;
-    --dim: #31464e;
+  /* Map this viz's legacy color names onto the shared Science theme tokens so
+     it themes with the rest of the desktop (light default, `dark` on body). */
+  body.science {
+    --cyan: var(--info);
+    --line: var(--border);
+    --text: var(--fg);
+    --mut: var(--muted-fg);
+    --dim: color-mix(in oklch, var(--muted-fg) 42%, transparent);
+    font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
   }
   html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden;
                font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
@@ -33,7 +36,7 @@ limitations under the License.
   canvas#view { display: block; position: fixed; inset: 0; }
 
   .panel {
-    position: fixed; background: rgba(7, 10, 11, 0.88); border: 1px solid var(--line);
+    position: fixed; background: color-mix(in oklch, var(--card) 88%, transparent); border: 1px solid var(--line);
     color: var(--text); font-size: 11px; padding: 0;
   }
   .panel h2 {
@@ -56,9 +59,9 @@ limitations under the License.
   .readout { color: var(--mut); white-space: nowrap; }
   .readout b { color: var(--text); font-weight: 600; }
   #topbar .spacer { flex: 1; }
-  #idle { display: none; color: #ffcc00; letter-spacing: 1px; }
+  #idle { display: none; color: var(--warn); letter-spacing: 1px; }
   #clock { color: var(--mut); letter-spacing: 1px; }
-  #conn { letter-spacing: 1px; color: #6a4a4a; }
+  #conn { letter-spacing: 1px; color: var(--muted-fg); }
   #conn.live { color: var(--cyan); }
 
   #modules { top: 52px; left: 14px; width: 256px; }
@@ -76,7 +79,7 @@ limitations under the License.
   .row .hz  { flex: 0 0 56px; text-align: right; color: var(--mut); white-space: nowrap; }
   .row .bps { flex: 0 0 70px; text-align: right; color: var(--mut); white-space: nowrap; }
   .row .hz b, .row .bps b { color: var(--cyan); font-weight: 600; }
-  .meter { height: 2px; margin: 1px 0 4px; background: rgba(0, 238, 238, 0.07); }
+  .meter { height: 2px; margin: 1px 0 4px; background: color-mix(in oklch, var(--info) 10%, transparent); }
   .meter i { display: block; height: 100%; background: var(--cyan); opacity: 0.75; }
   .empty { color: var(--dim); font-size: 11px; padding: 4px 0; }
 
@@ -85,6 +88,8 @@ limitations under the License.
   #spark { width: 300px; height: 34px; display: block; }
 
   #help { position: fixed; bottom: 16px; left: 16px; color: var(--dim); font-size: 10px; letter-spacing: 1.5px; user-select: none; }
+  #legend { position: fixed; bottom: 34px; left: 16px; color: var(--mut); font-size: 10px; letter-spacing: 1.5px; user-select: none; }
+  #legend b { color: var(--text); font-weight: 600; }
 
   #tooltip {
     display: none; position: fixed; z-index: 10; pointer-events: none;
@@ -93,9 +98,52 @@ limitations under the License.
   #tooltip .tname { color: var(--cyan); font-weight: 600; }
   #tooltip .trow { color: var(--mut); }
   #tooltip .trow b { color: var(--text); font-weight: 500; }
+
+  /* Medium windows: shrink the side panels so they don't swallow the graph.
+     Width only — never `display` — so the T/M/D show-hide toggles keep working. */
+  @media (max-width: 820px) {
+    #topbar { gap: 14px; padding: 0 12px; }
+    #r-total { display: none; }
+    #modules { width: 208px; }
+    #topics, #dtop { width: 236px; }
+  }
+
+  /* Narrow / mobile: abandon the floating-overlay layout entirely and stack in
+     normal document flow — TOPICS, then MODULES, then DTOP, then the node view
+     flows below. Panels go static/full-width; the canvas becomes a boxed flow
+     element (JS reads its measured size via VW/VH, so the graph fills it). */
+  @media (max-width: 620px) {
+    html, body { height: auto; min-height: 100%; overflow-x: hidden; overflow-y: auto; }
+    body { display: flex; flex-direction: column; }
+    #topbar {
+      position: sticky; top: 0; order: 0; z-index: 5;
+      height: auto; flex-wrap: wrap; gap: 6px 12px; padding: 6px 10px;
+    }
+    #topbar .logo { font-size: 10.5px; letter-spacing: 1.5px; }
+    #topbar .logo span { display: none; }
+    .readout, #r-graph, #r-rate { font-size: 10px; }
+    #clock, #idle { display: none; }
+    #topbar .spacer { display: none; }
+
+    #topics, #modules, #dtop {
+      position: static; inset: auto; width: auto;
+      max-height: none; margin: 8px 10px 0;
+    }
+    #topics { order: 1; }
+    #modules { order: 2; }
+    #dtop { order: 3; }
+    .panel .body { overflow: visible; }
+
+    canvas#view {
+      position: relative; inset: auto; order: 4;
+      width: 100%; height: 68vh; min-height: 340px; margin-top: 8px;
+    }
+    #bottombar, #legend, #help { display: none; }
+    #tooltip { display: none !important; }
+  }
 </style>
 </head>
-<body>
+<body class="science">
 <canvas id="view"></canvas>
 
 <div class="panel" id="topbar">
@@ -123,7 +171,7 @@ limitations under the License.
 </div>
 
 <div class="panel" id="dtop">
-  <h2>DTOP · CPU/RAM <b id="dtopcount"></b> <span id="dtop-status" style="float:right; letter-spacing:1px; color:#6a4a4a">○ NO STREAM</span></h2>
+  <h2>DTOP · CPU/RAM <b id="dtopcount"></b> <span id="dtop-status" style="float:right; letter-spacing:1px; color:var(--muted-fg)">○ NO STREAM</span></h2>
   <div class="body" id="dtoplist"></div>
 </div>
 
@@ -133,42 +181,101 @@ limitations under the License.
 </div>
 
 <div class="panel" id="tooltip"></div>
-<div id="help">DRAG NODES · HOVER INSPECT · SPACE PAUSE · T TOPICS · M MODULES · D DTOP · F FPS</div>
+<div id="legend">TRANSPORT&nbsp;&nbsp;<b>◆</b> LCM&nbsp;&nbsp;·&nbsp;&nbsp;<b>▲</b> ZENOH</div>
+<div id="help">DRAG NODES · HOVER INSPECT · SPACE PAUSE · T TOPICS · M MODULES · D DTOP · F FPS · L THEME</div>
 
 <script type="module">
 import { DimAppFrontend } from "https://esm.sh/gh/jeff-hykin/dim-app@v0.3.0/frontend.js";
 "use strict";
 
-// ---------------------------------------------------------------- palette --
-const TYPE_COLORS = {
-  Image: "#ffcc00", CompressedImage: "#f2ea8c", CameraInfo: "#f2ea8c",
-  PointCloud2: "#b06bff", LaserScan: "#c890ff",
-  OccupancyGrid: "#5c9ff0", Path: "#8cbdf2",
-  Odometry: "#00eeee", PoseStamped: "#00eeee", Twist: "#00eeee",
-  TFMessage: "#88ff88", Bool: "#b5e4f4", String: "#b5e4f4",
-};
-const PKG_COLORS = {
-  sensor_msgs: "#ffcc00", geometry_msgs: "#00eeee", nav_msgs: "#5c9ff0",
-  tf2_msgs: "#88ff88", vision_msgs: "#c890ff", std_msgs: "#b5e4f4",
-};
-const PALETTE = ["#00eeee", "#ffcc00", "#5c9ff0", "#b06bff", "#88ff88", "#f2ea8c", "#8cbdf2", "#c890ff"];
+// ------------------------------------------------------------------ theme --
+// Colors come from the shared Science theme (/assets/theme.css) so the viz
+// tracks light/dark. Canvas can't read CSS vars directly, so each token is
+// resolved to a concrete rgb() through a hidden probe and rebuilt on change.
+const __probe = document.createElement("span");
+__probe.style.cssText = "position:absolute;visibility:hidden;pointer-events:none";
+document.body.appendChild(__probe);
+function cssColor(name) {
+  __probe.style.color = `var(${name})`;
+  return getComputedStyle(__probe).color;
+}
 
-function colorFor(channel) {
-  const hash = [...channel].reduce((a, c) => a + c.charCodeAt(0), 0);
-  const m = channel.split("#")[1];
-  if (m) {
-    const msg = m.split(".").pop();
+let THEME = {};
+let TYPE_COLORS = {}, PKG_COLORS = {}, PALETTE = [];
+
+function buildPalettes() {
+  // message-type → hue, kept semantically close to the old hand-picked palette
+  TYPE_COLORS = {
+    Image: THEME.warn, CompressedImage: THEME.warn, CameraInfo: THEME.warn,
+    PointCloud2: THEME.violet, LaserScan: THEME.violet,
+    OccupancyGrid: THEME.cat[0], Path: THEME.cat[0],
+    Odometry: THEME.info, PoseStamped: THEME.info, Twist: THEME.info,
+    TFMessage: THEME.ok, Bool: THEME.cat[1], String: THEME.cat[1],
+  };
+  PKG_COLORS = {
+    sensor_msgs: THEME.warn, geometry_msgs: THEME.info, nav_msgs: THEME.cat[0],
+    tf2_msgs: THEME.ok, vision_msgs: THEME.violet, std_msgs: THEME.cat[1],
+  };
+  PALETTE = [THEME.info, THEME.warn, THEME.cat[0], THEME.violet, THEME.ok,
+             THEME.cat[1], THEME.cat[2], THEME.cat[3]];
+}
+
+function loadTheme() {
+  THEME = {
+    bg: cssColor("--bg"), card: cssColor("--card"), fg: cssColor("--fg"),
+    mutedFg: cssColor("--muted-fg"), border: cssColor("--border"),
+    gridLine: cssColor("--grid-line"),
+    info: cssColor("--info"), primary: cssColor("--primary"), warn: cssColor("--warn"),
+    ok: cssColor("--ok"), violet: cssColor("--violet"), danger: cssColor("--danger"),
+    cat: [cssColor("--cat-1"), cssColor("--cat-2"), cssColor("--cat-3"), cssColor("--cat-4")],
+  };
+  buildPalettes();
+  for (const n of nodes.values()) n.color = n.kind === "module" ? THEME.info : colorFor(n.id, n.transport);
+  if (gridLayer) buildGrid();
+}
+
+// Split a channel/key into a display base and its message type. LCM channels
+// carry the type after "#" ("/pose#geometry_msgs.PoseStamped"); Zenoh keys carry
+// it as the final "/" segment ("dimos/cmd_vel/geometry_msgs.Twist").
+function channelType(channel, transport) {
+  if (channel.includes("#")) {
+    const parts = channel.split("#");
+    return { base: parts[0], msgType: parts[1] || "" };
+  }
+  if ((transport === "zenoh" || channel.includes("/")) && channel.includes("/")) {
+    const segs = channel.split("/");
+    const last = segs[segs.length - 1];
+    if (last.includes(".") && segs.length > 1) return { base: segs.slice(0, -1).join("/"), msgType: last };
+  }
+  return { base: channel, msgType: "" };
+}
+
+function colorFor(channel, transport) {
+  const { msgType } = channelType(channel, transport);
+  if (msgType) {
+    const msg = msgType.split(".").pop();
     if (TYPE_COLORS[msg]) return TYPE_COLORS[msg];
-    const pkg = m.split(".")[0];
+    const pkg = msgType.split(".")[0];
     if (PKG_COLORS[pkg]) return PKG_COLORS[pkg];
   }
-  if (channel.startsWith("/rpc")) return "#8cbdf2";
+  if (channel.startsWith("/rpc") || channel.startsWith("rpc")) return THEME.cat[0];
+  const hash = [...channel].reduce((a, c) => a + c.charCodeAt(0), 0);
   return PALETTE[hash % PALETTE.length];
 }
 
-function withAlpha(hex, a) {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+// Accepts "#rrggbb" or an "rgb()/rgba()" string and returns rgba() at alpha `a`.
+function withAlpha(color, a) {
+  if (color[0] === "#") {
+    const n = parseInt(color.slice(1), 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+  }
+  // Modern browsers report `getComputedStyle().color` for oklch tokens back as
+  // an `oklch(L C H)` string — parse those as L/C/H, not R/G/B (otherwise the
+  // hue lands in the blue channel and every blended color turns blue).
+  const p = color.match(/[\d.]+/g);
+  if (!p || p.length < 3) return color;
+  if (color.startsWith("oklch")) return `oklch(${p[0]} ${p[1]} ${p[2]} / ${a})`;
+  return `rgba(${p[0]}, ${p[1]}, ${p[2]}, ${a})`;
 }
 
 // ------------------------------------------------------------------ graph --
@@ -177,19 +284,22 @@ const edges = [];
 const edgeIndex = new Map();
 const routes = new Map();
 
-function makeNode(id, kind, label) {
+function makeNode(id, kind, label, transport) {
+  const { msgType } = channelType(id, transport);
   return {
     id, kind, label,
-    x: innerWidth / 2, y: innerHeight / 2, vx: 0, vy: 0,
-    r: kind === "module" ? 13 : 3.5,
-    glow: 0, color: kind === "module" ? "#00eeee" : colorFor(id),
+    x: VW / 2, y: VH / 2, vx: 0, vy: 0,
+    r: kind === "module" ? 14 : 4.5,
+    glow: 0, color: kind === "module" ? THEME.info : colorFor(id, transport),
     bytes: 0, msgs: 0, fixed: false, placed: false,
+    transport: transport || "", msgType,
   };
 }
 
-function ensureNode(id, kind, label) {
+function ensureNode(id, kind, label, transport) {
   let n = nodes.get(id);
-  if (!n) { n = makeNode(id, kind, label); nodes.set(id, n); }
+  if (!n) { n = makeNode(id, kind, label, transport); nodes.set(id, n); }
+  else if (transport && !n.transport) { n.transport = transport; n.color = colorFor(id, transport); }
   return n;
 }
 
@@ -207,8 +317,10 @@ function applyTopology(topo) {
   for (const t of topo.edges) {
     if (!t.topic || t.topic === "None") continue;
     const mod = ensureNode("m:" + t.module, "module", t.module);
-    const hub = ensureNode(t.topic, "topic", t.topic.split("#")[0]);
-    hub.transport = t.transport; hub.msgType = (t.type || "").split(".").pop();
+    const hub = ensureNode(t.topic, "topic", channelType(t.topic, t.transport).base, t.transport);
+    if (t.transport) hub.transport = t.transport;
+    hub.msgType = (t.type || channelType(t.topic, t.transport).msgType || "").split(".").pop();
+    hub.color = colorFor(t.topic, hub.transport);
     let route = routes.get(t.topic);
     if (!route) { route = { pubs: new Set(), subs: new Set() }; routes.set(t.topic, route); }
     if (t.direction === "out") { route.pubs.add(mod.id); addEdge(mod.id, hub.id, t.topic, true); }
@@ -218,10 +330,30 @@ function applyTopology(topo) {
   layout();
 }
 
+// Play area for the graph. The side panels reserve left/right gutters, but on
+// narrow windows those gutters are shrunk to near-margins so the graph never
+// collapses into a vertical sliver (it spreads full-width and the panels just
+// overlay the top corners). Used by both layout() and stepPhysics().
+function layoutBounds() {
+  const w = VW, h = VH;
+  let left = 300, right = 380;
+  if (w <= 820) { left = 224; right = 252; }
+  if (w <= 620) { left = 28; right = 28; }
+  // never reserve more than 60% of the width — always keep a real band
+  if (left + right > w * 0.6) {
+    const k = (w * 0.6) / (left + right);
+    left *= k; right *= k;
+  }
+  const minX = Math.max(16, left), maxX = w - Math.max(16, right);
+  const minY = 72, maxY = h - 76;
+  return { minX, maxX, minY, maxY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 + 6 };
+}
+
 function layout() {
   const all = [...nodes.values()].filter((n) => n.kind === "module");
-  const cx = innerWidth / 2, cy = innerHeight / 2 + 10;
-  const R = Math.min(innerWidth - 700, innerHeight - 160) * 0.42;
+  const b = layoutBounds();
+  const cx = b.cx, cy = b.cy;
+  const R = Math.max(70, Math.min(b.maxX - b.minX, b.maxY - b.minY) * 0.42);
   all.sort((a, b) => a.label.localeCompare(b.label));
   all.forEach((n, i) => {
     if (n.placed) return;
@@ -284,14 +416,15 @@ function fanOut(meta) {
   }
 }
 
-function spawnParticles(channel, count, bytes) {
-  const hub = nodes.get(channel) ?? ensureNode(channel, "topic", channel.split("#")[0]);
+function spawnParticles(channel, count, bytes, transport) {
+  const hub = nodes.get(channel) ?? ensureNode(channel, "topic", channelType(channel, transport).base, transport);
+  if (transport && !hub.transport) { hub.transport = transport; hub.color = colorFor(channel, transport); }
   if (!hub.placed) layout();
   hub.bytes += bytes; hub.msgs += count;
 
   const route = routes.get(channel);
-  const size = Math.max(1.4, Math.min(3.6, Math.log2(1 + bytes / Math.max(1, count)) * 0.28));
-  const color = colorFor(channel);
+  const size = Math.max(1.8, Math.min(4.2, Math.log2(1 + bytes / Math.max(1, count)) * 0.32));
+  const color = hub.color;
   const n = Math.min(count, 8);
   const meta = { channel, size, color, bytes, n };
 
@@ -321,13 +454,14 @@ const perTopic = new Map();
 const sparkSamples = new Array(150).fill(0);
 let sparkAccum = 0;
 
-function noteTraffic(channel, count, bytes) {
+function noteTraffic(channel, count, bytes, transport) {
   totalMsgs += count; totalBytes += bytes; sparkAccum += bytes;
   lastPacketAt = performance.now();
   const now = lastPacketAt;
   windowEvents.push([now, count, bytes]);
   let t = perTopic.get(channel);
-  if (!t) { t = { msgs: 0, bytes: 0, win: [] }; perTopic.set(channel, t); }
+  if (!t) { t = { msgs: 0, bytes: 0, win: [], transport: transport || "" }; perTopic.set(channel, t); }
+  if (transport && !t.transport) t.transport = transport;
   t.msgs += count; t.bytes += bytes; t.win.push([now, count, bytes]);
 }
 
@@ -359,9 +493,11 @@ __dimApp.receiveRequest((tag, msg) => {
   if (msg.kind === "topology") applyTopology(msg);
   else if (msg.kind === "dtop") { dtopData = msg.data; dtopAt = Date.now(); }
   else if (msg.kind === "packets") {
-    for (const [channel, count, bytes] of msg.events) {
-      noteTraffic(channel, count, bytes);
-      if (!paused) spawnParticles(channel, count, bytes);
+    for (const ev of msg.events) {
+      // events are [transport, channel, count, bytes]
+      const [transport, channel, count, bytes] = ev;
+      noteTraffic(channel, count, bytes, transport);
+      if (!paused) spawnParticles(channel, count, bytes, transport);
     }
   }
 });
@@ -376,7 +512,8 @@ globalThis.__lcmflow = { applyTopology, noteTraffic, spawnParticles };
 // ---------------------------------------------------------------- physics --
 function stepPhysics(dt) {
   const ns = [...nodes.values()];
-  const cx = innerWidth / 2, cy = innerHeight / 2 + 10;
+  const b = layoutBounds();
+  const cx = b.cx, cy = b.cy;
   for (let i = 0; i < ns.length; i++) {
     const a = ns[i];
     if (a.fixed) continue;
@@ -405,8 +542,8 @@ function stepPhysics(dt) {
   for (const n of ns) {
     if (n.fixed) continue;
     n.x += n.vx; n.y += n.vy;
-    n.x = Math.max(300, Math.min(innerWidth - 370, n.x));
-    n.y = Math.max(72, Math.min(innerHeight - 76, n.y));
+    n.x = Math.max(b.minX, Math.min(b.maxX, n.x));
+    n.y = Math.max(b.minY, Math.min(b.maxY, n.y));
   }
 }
 
@@ -415,20 +552,24 @@ const canvas = document.getElementById("view");
 const ctx = canvas.getContext("2d");
 let dpr = 1;
 let gridLayer = null;
+// Canvas viewport size in CSS px. Equals the window when the canvas is full-
+// bleed (wide layout) but is smaller when the canvas becomes a flow element in
+// the stacked narrow layout — so all drawing/physics uses these, not the window.
+let VW = innerWidth, VH = innerHeight;
 
 function buildGrid() {
   gridLayer = document.createElement("canvas");
-  gridLayer.width = innerWidth * dpr;
-  gridLayer.height = innerHeight * dpr;
+  gridLayer.width = VW * dpr;
+  gridLayer.height = VH * dpr;
   const g = gridLayer.getContext("2d");
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   // dot lattice
-  g.fillStyle = "rgba(0, 238, 238, 0.05)";
-  for (let x = 14; x < innerWidth; x += 28) {
-    for (let y = 14; y < innerHeight; y += 28) g.fillRect(x, y, 1, 1);
+  g.fillStyle = THEME.gridLine;
+  for (let x = 14; x < VW; x += 28) {
+    for (let y = 14; y < VH; y += 28) g.fillRect(x, y, 1, 1);
   }
-  const cx = innerWidth / 2, cy = innerHeight / 2 + 10;
-  g.strokeStyle = "rgba(0, 238, 238, 0.05)";
+  const cx = VW / 2, cy = VH / 2 + 10;
+  g.strokeStyle = withAlpha(THEME.info, 0.06);
   g.lineWidth = 1;
   for (const r of [170, 340, 510]) {
     g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.stroke();
@@ -438,12 +579,39 @@ function buildGrid() {
 
 function resize() {
   dpr = Math.min(devicePixelRatio || 1, 3);
-  canvas.width = innerWidth * dpr;
-  canvas.height = innerHeight * dpr;
-  canvas.style.width = innerWidth + "px";
-  canvas.style.height = innerHeight + "px";
+  // Overlay (wide): the canvas is position:fixed; a replaced element won't
+  // stretch to inset:0 on its own, so size it to the window explicitly.
+  // Stacked (narrow): CSS sizes the box (width:100%, height:68vh) — clear any
+  // inline size and measure it so CSS keeps control across resizes.
+  if (getComputedStyle(canvas).position === "fixed") {
+    VW = innerWidth;
+    VH = innerHeight;
+    canvas.style.width = VW + "px";
+    canvas.style.height = VH + "px";
+  } else {
+    canvas.style.width = "";
+    canvas.style.height = "";
+    const rect = canvas.getBoundingClientRect();
+    VW = Math.max(1, Math.round(rect.width));
+    VH = Math.max(1, Math.round(rect.height));
+  }
+  canvas.width = VW * dpr;
+  canvas.height = VH * dpr;
   buildGrid();
 }
+// Follow OS light/dark and re-resolve canvas tokens on any theme flip. Order
+// matters: apply the OS `dark` class and attach the observer BEFORE the first
+// loadTheme(), otherwise the canvas resolves the light palette while the CSS
+// panels already went dark (split-theme bug).
+new MutationObserver(loadTheme).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+(function () {
+  const mq = matchMedia("(prefers-color-scheme: light)");
+  const apply = () => document.body.classList.toggle("dark", !mq.matches);
+  apply();
+  mq.addEventListener("change", apply);
+})();
+loadTheme();
+
 addEventListener("resize", resize);
 resize();
 
@@ -477,7 +645,7 @@ function label(text, x, y, font, color, align = "center") {
   ctx.font = font;
   ctx.textAlign = align;
   ctx.lineWidth = 3;
-  ctx.strokeStyle = "rgba(7, 9, 10, 0.9)";
+  ctx.strokeStyle = withAlpha(THEME.bg, 0.85);
   ctx.strokeText(text, x, y);
   ctx.fillStyle = color;
   ctx.fillText(text, x, y);
@@ -494,10 +662,10 @@ function frame(now) {
   if (!paused) { stepPhysics(dt * 60); dashOffset -= dt * 30; }
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, innerWidth, innerHeight);
-  ctx.fillStyle = "#07090a";
-  ctx.fillRect(0, 0, innerWidth, innerHeight);
-  ctx.drawImage(gridLayer, 0, 0, innerWidth, innerHeight);
+  ctx.clearRect(0, 0, VW, VH);
+  ctx.fillStyle = THEME.bg;
+  ctx.fillRect(0, 0, VW, VH);
+  ctx.drawImage(gridLayer, 0, 0, VW, VH);
 
   // ---- edges: graphite hairlines; active edges carry colored dash flow
   for (const e of edges) {
@@ -507,11 +675,12 @@ function frame(now) {
     const hot = Math.min(1, e.flow + hub.glow * 0.25);
     const isHover = hovered && (e.from === hovered.id || e.to === hovered.id);
     ctx.globalAlpha = focusIds && !isHover ? 0.12 : 1; // dim non-focused edges
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = `rgba(70, 110, 120, ${isHover ? 0.6 : 0.13})`;
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = withAlpha(THEME.primary, isHover ? 0.6 : 0.18);
     strokeCurve(a, b);
     if (hot > 0.03 || isHover) {
       ctx.strokeStyle = withAlpha(hub.color, Math.min(0.9, 0.15 + hot * 0.7 + (isHover ? 0.3 : 0)));
+      ctx.lineWidth = 2;
       ctx.setLineDash([3, 9]);
       ctx.lineDashOffset = e.directed ? dashOffset : 0;
       strokeCurve(a, b);
@@ -578,24 +747,27 @@ function frame(now) {
     if (n.glow > 0.02) {
       ctx.shadowColor = n.color; ctx.shadowBlur = 9;
     }
+    // shape encodes transport: Zenoh = triangle, LCM (and unknown) = diamond
+    const sides = n.transport === "zenoh" ? 3 : 4;
+    const angle = n.transport === "zenoh" ? -Math.PI / 2 : Math.PI / 4;
     ctx.strokeStyle = withAlpha(n.color, 0.45 + Math.min(0.55, n.glow * 0.7) + (isHover ? 0.3 : 0));
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1.7;
     if (orphan) ctx.setLineDash([2.5, 2.5]);
-    polygon(n.x, n.y, r, 4, Math.PI / 4);
+    polygon(n.x, n.y, r, sides, angle);
     ctx.stroke();
     if (orphan) {
       ctx.setLineDash([]);
       if (n.glow > 0.05) {
-        ctx.strokeStyle = withAlpha("#ffcc00", Math.min(0.5, n.glow * 0.4));
-        polygon(n.x, n.y, r + 3.5, 4, Math.PI / 4);
+        ctx.strokeStyle = withAlpha(THEME.warn, Math.min(0.5, n.glow * 0.4));
+        polygon(n.x, n.y, r + 3.5, sides, angle);
         ctx.stroke();
       }
     }
     ctx.fillStyle = withAlpha(n.color, 0.25 + Math.min(0.75, n.glow));
-    ctx.fillRect(n.x - 1, n.y - 1, 2, 2);
+    ctx.fillRect(n.x - 1.5, n.y - 1.5, 3, 3);
     ctx.shadowBlur = 0;
-    label(n.label, n.x, n.y - r - 5, "9px ui-monospace, monospace",
-          isHover ? "#d7f3fa" : withAlpha("#7da7b3", 0.5 + Math.min(0.5, n.glow)));
+    label(n.label, n.x, n.y - r - 5, "9.5px ui-monospace, monospace",
+          isHover ? THEME.fg : withAlpha(THEME.mutedFg, 0.62 + Math.min(0.38, n.glow)));
     ctx.globalAlpha = 1;
   }
 
@@ -609,24 +781,24 @@ function frame(now) {
     ctx.globalAlpha = focusIds && !focusIds.has(n.id) ? 0.2 : 1;
     const isSource = hoveredRoute && hoveredRoute.pubs.has(n.id);
     const r = n.r + (isHover ? 1.5 : 0);
-    ctx.strokeStyle = withAlpha("#00eeee", 0.75);
-    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = withAlpha(THEME.info, 0.8);
+    ctx.lineWidth = 1.9;
     polygon(n.x, n.y, r, 6, Math.PI / 6);
     ctx.stroke();
     if (n.glow > 0.03) {
-      ctx.strokeStyle = withAlpha("#00eeee", Math.min(0.5, n.glow * 0.5));
+      ctx.strokeStyle = withAlpha(THEME.info, Math.min(0.5, n.glow * 0.5));
       ctx.lineWidth = 1;
       polygon(n.x, n.y, r + 3.5, 6, Math.PI / 6);
       ctx.stroke();
     }
-    ctx.shadowColor = "#00eeee"; ctx.shadowBlur = isHover ? 10 : 6;
-    ctx.fillStyle = withAlpha("#00eeee", 0.85);
-    ctx.beginPath(); ctx.arc(n.x, n.y, 2.2, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowColor = THEME.info; ctx.shadowBlur = isHover ? 10 : 6;
+    ctx.fillStyle = withAlpha(THEME.info, 0.9);
+    ctx.beginPath(); ctx.arc(n.x, n.y, 3, 0, Math.PI * 2); ctx.fill();
     ctx.shadowBlur = 0;
     label(n.label, n.x, n.y + r + 14, "600 10px ui-monospace, monospace",
-          isHover || isSource ? "#ffffff" : "#c9e8f2");
+          isHover ? THEME.info : THEME.fg);
     if (isSource) {
-      label("◆ SOURCE", n.x, n.y - r - 8, "700 9px ui-monospace, monospace", "#ffcc00");
+      label("◆ SOURCE", n.x, n.y - r - 8, "700 9px ui-monospace, monospace", THEME.warn);
     }
     ctx.globalAlpha = 1;
   }
@@ -645,7 +817,7 @@ function drawSpark() {
   const w = 300, h = 34;
   sparkCtx.clearRect(0, 0, w, h);
   const max = Math.max(...sparkSamples, 1);
-  sparkCtx.strokeStyle = "rgba(0, 238, 238, 0.12)";
+  sparkCtx.strokeStyle = withAlpha(THEME.mutedFg, 0.18);
   sparkCtx.lineWidth = 1;
   for (const f of [0.25, 0.5, 0.75]) {
     sparkCtx.beginPath();
@@ -657,7 +829,7 @@ function drawSpark() {
     const x = (i / (sparkSamples.length - 1)) * w, y = h - 2 - (v / max) * (h - 6);
     i ? sparkCtx.lineTo(x, y) : sparkCtx.moveTo(x, y);
   });
-  sparkCtx.strokeStyle = "#00eeee";
+  sparkCtx.strokeStyle = THEME.info;
   sparkCtx.lineWidth = 1;
   sparkCtx.stroke();
 }
@@ -707,7 +879,7 @@ function updateHud(now) {
   const tops = [...nodes.values()].filter((n) => n.kind === "topic");
 
   els.graph.innerHTML = `<b>${mods.length}</b> MOD · <b>${tops.length}</b> TOP` +
-    (paused ? ' · <b style="color:#ffcc00">⏸ PAUSED</b>' : "");
+    (paused ? ' · <b style="color:var(--warn)">⏸ PAUSED</b>' : "");
   els.rate.innerHTML = `<b>${(wMsgs / 5).toFixed(1)}</b> Hz · <b>${human(wBytes / 5)}</b>/s`;
   els.total.innerHTML = `Σ <b>${totalMsgs.toLocaleString()}</b> · <b>${human(totalBytes)}</b>`;
   els.clock.textContent = new Date().toISOString().slice(11, 19) + " UTC";
@@ -756,11 +928,14 @@ function updateHud(now) {
       .sort((a, b) => b[1].bps - a[1].bps)
       .slice(0, 16);
     els.topiclist.innerHTML = rows
-      .map(([ch, s]) =>
-        `<div class="row"><span class="mark" style="color:${colorFor(ch)}">◆</span>` +
-        `<span class="name">${ch.split("#")[0]}</span>` +
-        `<span class="hz"><b>${s.hz.toFixed(1)}</b> Hz</span>` +
-        `<span class="bps">${human(s.bps)}/s</span></div>`)
+      .map(([ch, s]) => {
+        const transport = perTopic.get(ch)?.transport || nodes.get(ch)?.transport || "";
+        const glyph = transport === "zenoh" ? "▲" : "◆";
+        return `<div class="row"><span class="mark" style="color:${colorFor(ch, transport)}">${glyph}</span>` +
+          `<span class="name">${channelType(ch, transport).base}</span>` +
+          `<span class="hz"><b>${s.hz.toFixed(1)}</b> Hz</span>` +
+          `<span class="bps">${human(s.bps)}/s</span></div>`;
+      })
       .join("") || '<div class="empty">no traffic yet</div>';
   }
 
@@ -786,7 +961,7 @@ function renderDtop() {
   const status = els.dtopStatus;
   if (status) {
     status.textContent = live ? "● LIVE" : "○ NO STREAM";
-    status.style.color = live ? "var(--cyan)" : "#6a4a4a";
+    status.style.color = live ? "var(--info)" : "var(--muted-fg)";
   }
   els.dtopcount.textContent = rows.length || "";
   els.dtoplist.innerHTML = rows.length
@@ -800,6 +975,13 @@ function renderDtop() {
 // ------------------------------------------------------------ interaction --
 let dragging = null;
 
+// Map a pointer event to canvas-local coords (the canvas may be offset/scrolled
+// in the stacked layout, so window clientX/Y is not the same as canvas space).
+function toCanvas(ev) {
+  const r = canvas.getBoundingClientRect();
+  return { x: ev.clientX - r.left, y: ev.clientY - r.top };
+}
+
 function nodeAt(x, y) {
   let best = null, bestD = 1e9;
   for (const n of nodes.values()) {
@@ -810,7 +992,8 @@ function nodeAt(x, y) {
 }
 
 canvas.addEventListener("mousedown", (ev) => {
-  const n = nodeAt(ev.clientX, ev.clientY);
+  const c = toCanvas(ev);
+  const n = nodeAt(c.x, c.y);
   if (n) { dragging = n; n.fixed = true; }
 });
 function computeFocus(node) {
@@ -824,8 +1007,9 @@ function computeFocus(node) {
 }
 
 addEventListener("mousemove", (ev) => {
-  if (dragging) { dragging.x = ev.clientX; dragging.y = ev.clientY; return; }
-  hovered = nodeAt(ev.clientX, ev.clientY);
+  const c = toCanvas(ev);
+  if (dragging) { dragging.x = c.x; dragging.y = c.y; return; }
+  hovered = nodeAt(c.x, c.y);
   focusIds = computeFocus(hovered);
   if (hovered) {
     const s = topicWindowStats(performance.now()).get(hovered.id);
@@ -837,11 +1021,11 @@ addEventListener("mousemove", (ev) => {
       const route = routes.get(hovered.id);
       const orphan = route && route.pubs.size > 0 && route.subs.size === 0;
       tip.innerHTML = `<div class="tname">${hovered.id}</div>` +
-        `<div class="trow">type <b>${hovered.msgType ?? "?"}</b> · transport <b>${hovered.transport ?? "?"}</b></div>` +
+        `<div class="trow">type <b>${hovered.msgType || "?"}</b> · transport <b>${hovered.transport || "?"}</b></div>` +
         (s ? `<div class="trow"><b>${s.hz.toFixed(1)}</b> Hz · <b>${human(s.bps)}</b>/s · Σ <b>${human(s.total)}</b></div>` : "") +
         (route ? `<div class="trow">pub <b>${[...route.pubs].map((p) => p.slice(2)).join(", ") || "?"}</b></div>` +
                  `<div class="trow">sub <b>${[...route.subs].map((p) => p.slice(2)).join(", ") || "—"}</b></div>` : "") +
-        (orphan ? `<div class="trow" style="color:#ffcc00">▲ published but no module subscribes in this blueprint</div>` : "");
+        (orphan ? `<div class="trow" style="color:var(--warn)">▲ published but no module subscribes in this blueprint</div>` : "");
     } else {
       const attached = [...routes.entries()].filter(([, r]) => r.pubs.has(hovered.id) || r.subs.has(hovered.id));
       tip.innerHTML = `<div class="tname">${hovered.label}</div>` +
@@ -862,6 +1046,7 @@ addEventListener("keydown", (ev) => {
   if (ev.key === "m") showModules = !showModules;
   if (ev.key === "f") showFps = !showFps;
   if (ev.key === "d") showDtop = !showDtop;
+  if (ev.key === "l") document.body.classList.toggle("dark");   // manual theme flip
 });
 </script>
 </body>
