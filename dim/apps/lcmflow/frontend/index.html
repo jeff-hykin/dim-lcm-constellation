@@ -115,6 +115,16 @@ limitations under the License.
   #conn { letter-spacing: 1px; color: var(--muted-fg); white-space: nowrap; }
   #conn.live { color: var(--info); }
 
+  #layouts { top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; padding: 4px; }
+  #layouts .lbl { align-self: center; font-size: 8px; letter-spacing: 1.5px; font-weight: 700;
+    color: var(--muted-fg); padding: 0 6px 0 2px; }
+  #layouts button { appearance: none; font: inherit; font-size: 10px; letter-spacing: 0.5px;
+    padding: 4px 9px; cursor: pointer; color: var(--muted-fg); background: transparent;
+    border: 1px solid transparent; border-radius: 7px; }
+  #layouts button:hover { background: color-mix(in oklch, var(--muted-fg) 14%, transparent); color: var(--fg); }
+  #layouts button.on { color: var(--info); background: color-mix(in oklch, var(--info) 14%, transparent);
+    border-color: color-mix(in oklch, var(--info) 40%, var(--border)); }
+
   #controls { bottom: 16px; left: 16px; display: flex; flex-direction: column; padding: 4px; gap: 2px; }
   #controls button { appearance: none; width: 30px; height: 28px; font: inherit; font-size: 15px; line-height: 1;
     cursor: pointer; color: var(--fg); background: transparent; border: 0; border-radius: 7px; }
@@ -144,12 +154,18 @@ limitations under the License.
 
   /* module card — launcher-style detail popover on hover/click */
   #card { width: 300px; max-height: 74vh; overflow-y: auto; padding: 0; display: none;
-    top: 0; left: 0; z-index: 8; }
+    top: 0; left: 0; z-index: 8;
+    /* translucent by default (hover preview) so it doesn't hide the graph */
+    background: color-mix(in oklch, var(--card) 30%, transparent); backdrop-filter: blur(3px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
   #card.show { display: block; }
-  #card.pinned { box-shadow: 0 6px 22px rgba(0,0,0,0.28); border-color: color-mix(in oklch, var(--info) 40%, var(--border)); }
+  /* clicked → pinned: fully opaque + persistent so it reads as a real panel */
+  #card.pinned { background: var(--card); backdrop-filter: blur(8px);
+    box-shadow: 0 6px 22px rgba(0,0,0,0.28); border-color: color-mix(in oklch, var(--info) 40%, var(--border)); }
   #card .chd { display: flex; align-items: center; gap: 8px; padding: 10px 12px 8px;
     border-bottom: 1px solid var(--border); position: sticky; top: 0;
-    background: color-mix(in oklch, var(--card) 94%, transparent); backdrop-filter: blur(8px); }
+    background: color-mix(in oklch, var(--card) 30%, transparent); backdrop-filter: blur(3px); }
+  #card.pinned .chd { background: color-mix(in oklch, var(--card) 94%, transparent); backdrop-filter: blur(8px); }
   #card .chd .badge { font-size: 8px; letter-spacing: 1.5px; font-weight: 700; color: var(--info);
     border: 1px solid color-mix(in oklch, var(--info) 45%, var(--border)); border-radius: 5px; padding: 2px 5px; }
   #card .chd .nm { font-size: 13px; font-weight: 600; color: var(--fg); }
@@ -197,6 +213,8 @@ limitations under the License.
   <span id="conn">○ offline</span>
 </div>
 
+<div class="bar" id="layouts"></div>
+
 <div class="bar" id="controls">
   <button id="zin"  title="zoom in">+</button>
   <button id="zout" title="zoom out">−</button>
@@ -215,7 +233,7 @@ limitations under the License.
 
 <div class="bar" id="card"></div>
 
-<div id="help">DRAG canvas to pan · SCROLL zoom · HOVER module for card · CLICK to pin · D workers · L theme</div>
+<div id="help">DRAG pan · SCROLL zoom · HOVER module for card · CLICK pin · G cycle layout · D workers · L theme</div>
 
 <script type="module">
 import { DimAppFrontend } from "https://esm.sh/gh/jeff-hykin/dim-app@v0.3.0/frontend.js";
@@ -321,7 +339,7 @@ function normBase(s) {
   const seg = b.split("/");
   return seg[seg.length - 1];
 }
-const topicBase = new Map();       // normBase(name) -> topic node id
+const topicBase = new Map();       // normBase(name) -> [topic node ids]
 const moduleInfo = new Map();      // module node id -> blueprint card payload
 
 let currentBlueprint = "";
@@ -335,28 +353,49 @@ function resetGraph() {
 
 // Build the graph from the active blueprint: modules with typed inputs/outputs +
 // docstrings, joined into topics by stream name. A module's `outputs` publish a
-// topic; its `inputs` subscribe. The spy only animates these edges afterward.
+// topic; its `inputs` subscribe. Each publisher gets its OWN topic node, so two
+// modules publishing the same name make two duplicate topic nodes; a subscriber
+// fans in from every same-named duplicate. The spy animates these edges after.
 function applyGraph(g) {
   if (g.blueprint !== currentBlueprint) { resetGraph(); currentBlueprint = g.blueprint; }
   for (const [mid, info] of Object.entries(g.modules || {})) {
     const nodeId = "m:" + mid;
-    const mod = ensureNode(nodeId, "module", info.label || mid);
+    ensureNode(nodeId, "module", info.label || mid);
     moduleInfo.set(nodeId, info);
   }
+  // Pass 1: bucket publishers and subscribers by topic name.
+  const pubsByTopic = new Map();   // name -> [{ modId, type }]
+  const subsByTopic = new Map();   // name -> [modId]
   for (const t of g.edges || []) {
     if (!t.topic || t.topic === "None") continue;
     const modId = "m:" + t.module;
     if (!nodes.has(modId)) ensureNode(modId, "module", g.modules?.[t.module]?.label || t.module);
-    const hub = ensureNode(t.topic, "topic", t.topic);
-    hub.msgType = (t.type || "").split(".").pop();
-    hub.accent = accentForType(t.type, t.topic);
-    topicBase.set(normBase(t.topic), hub.id);
-    let route = routes.get(t.topic);
-    if (!route) { route = { pubs: new Set(), subs: new Set() }; routes.set(t.topic, route); }
-    if (t.direction === "in") { route.subs.add(modId); addEdge(hub.id, modId, t.topic, true); }
-    else { route.pubs.add(modId); addEdge(modId, hub.id, t.topic, true); }
+    if (t.direction === "in") {
+      (subsByTopic.get(t.topic) || subsByTopic.set(t.topic, []).get(t.topic)).push(modId);
+    } else {
+      (pubsByTopic.get(t.topic) || pubsByTopic.set(t.topic, []).get(t.topic)).push({ modId, type: t.type });
+    }
   }
-  if (dirty) { buildDom(); dirty = false; reheat(1); settleIfFirst(); }
+  // Pass 2: one topic node per publisher instance; each subscriber connects to
+  // every same-named instance. A subscribed name with no publisher still gets a
+  // single node so the subscription stays visible.
+  for (const name of new Set([...pubsByTopic.keys(), ...subsByTopic.keys()])) {
+    const pubs = pubsByTopic.get(name) || [];
+    const subs = subsByTopic.get(name) || [];
+    const instances = pubs.length ? pubs : [{ modId: null, type: "" }];
+    instances.forEach((pub, i) => {
+      const topicId = pubs.length ? `${name}#${pub.modId}#${i}` : name;
+      const hub = ensureNode(topicId, "topic", name);
+      hub.msgType = (pub.type || "").split(".").pop();
+      hub.accent = accentForType(pub.type, name);
+      const route = { pubs: new Set(), subs: new Set() };
+      if (pub.modId) { route.pubs.add(pub.modId); addEdge(pub.modId, topicId, name, true); }
+      for (const subId of subs) { route.subs.add(subId); addEdge(topicId, subId, name, true); }
+      routes.set(topicId, route);
+      (topicBase.get(normBase(name)) || topicBase.set(normBase(name), []).get(normBase(name))).push(topicId);
+    });
+  }
+  if (dirty) { buildDom(); dirty = false; applyGraphLayout(); }
 }
 
 // ─────────────────────────────────────────── force-directed layout ──
@@ -376,6 +415,8 @@ const MAX_STEP = 34;       // clamp per-tick displacement (px)
 let heat = 0;              // sim "temperature"; >0.04 means keep integrating
 let seedCount = 0;
 let settledOnce = false;
+let layoutId = "hierarchy";    // active LAYOUTS[].id (default)
+let simFrozen = false;     // true while a graphviz layout holds its own shape
 
 function seed(n) {
   if (n.placed) return;
@@ -385,7 +426,7 @@ function seed(n) {
   n.y = Math.sin(ang) * rad;
   n.vx = 0; n.vy = 0; n.placed = true; seedCount++;
 }
-function reheat(amount = 1) { heat = Math.max(heat, amount); }
+function reheat(amount = 1) { if (!simFrozen) heat = Math.max(heat, amount); }
 
 function stepForces() {
   const ns = [...nodes.values()];
@@ -433,16 +474,156 @@ function stepForces() {
   }
 }
 
-// On the very first topology, pre-settle synchronously so nodes don't visibly
-// fly out from the center, then frame the result. Later growth just re-warms.
-function settleIfFirst() {
-  if (settledOnce || !nodes.size) return;
-  settledOnce = true;
+// ───────────────────────────────────────────────────── graph layouts ──
+// Five distinct shapes. #1 "Force" is the organic force-directed web (the sim
+// runs live). The other four are computed by Graphviz (compiled to WASM): each
+// engine imposes its own rigid shape and routes every edge as a predictable
+// spline, so the graph snaps into a stable, readable form — very different from
+// the loose web. While a Graphviz layout is showing, the sim is frozen.
+const LAYOUTS = [
+  { id: "hierarchy", label: "Hierarchy", engine: "dot" },   // layered L→R DAG (default)
+  { id: "organic", label: "Organic", engine: "neato" },  // stress / spring model
+  { id: "force", label: "Force", engine: null },        // live force-directed web
+  { id: "radial", label: "Radial", engine: "twopi" },   // radial tree
+  { id: "circular", label: "Circular", engine: "circo" },  // nodes on one big cycle
+];
+
+// Graphviz is loaded lazily from esm.sh the first time a non-force layout runs.
+let graphvizPromise = null;
+function loadGraphviz() {
+  if (!graphvizPromise) {
+    graphvizPromise = import("https://esm.sh/@hpcc-js/wasm-graphviz@1.7.0")
+      .then((mod) => mod.Graphviz.load());
+  }
+  return graphvizPromise;
+}
+
+const PT_PER_IN = 72;   // graphviz sizes are inches; our world unit is 1pt = 1px
+// Build DOT from the live graph. Each node box carries its measured pixel size
+// (as inches, fixedsize) so graphviz reserves exactly our footprint; nodes are
+// keyed by array index (n0,n1,…) to dodge id-quoting issues. Returns the emitted
+// edge list so the parsed splines can be matched back by input order.
+function buildDot(engine) {
+  const arr = [...nodes.values()];
+  const idx = new Map(arr.map((n, i) => [n.id, i]));
+  const lines = ["digraph {"];
+  lines.push(engine === "dot"
+    ? "  graph [rankdir=LR, nodesep=0.45, ranksep=1.1, splines=true];"
+    : "  graph [overlap=false, sep=\"+20\", splines=true];");
+  lines.push("  node [fixedsize=true, shape=box];");
+  arr.forEach((n, i) => {
+    lines.push(`  n${i} [width=${(n.w / PT_PER_IN).toFixed(3)}, height=${(n.h / PT_PER_IN).toFixed(3)}];`);
+  });
+  const emitted = [];
+  for (const e of edges) {
+    const a = idx.get(e.from), b = idx.get(e.to);
+    if (a == null || b == null) continue;
+    lines.push(`  n${a} -> n${b};`);
+    emitted.push(e);
+  }
+  lines.push("}");
+  return { dot: lines.join("\n"), arr, emitted };
+}
+// Graphviz uses points with y increasing upward; we use pixels with y down and a
+// centered origin. Flip y about the bounding box and recenter on its middle,
+// then read node centers and each edge's bspline control points into world space.
+function applyEnginePositions(json, arr, emitted) {
+  const bb = (json.bb || "0,0,0,0").split(",").map(Number);
+  const boxH = bb[3], cx = bb[2] / 2, cy = bb[3] / 2;
+  const toWorld = (x, y) => ({ x: x - cx, y: (boxH - y) - cy });
+  const gvidName = new Map((json.objects || []).map((o) => [o._gvid, o.name]));
+  for (const o of json.objects || []) {
+    const m = /^n(\d+)$/.exec(o.name || "");
+    if (!m || !o.pos) continue;
+    const [px, py] = o.pos.split(",").map(Number);
+    const p = toWorld(px, py);
+    const n = arr[+m[1]];
+    n.x = p.x; n.y = p.y; n.vx = 0; n.vy = 0; n.fixed = true;
+  }
+  for (const e of edges) e.spline = null;
+  // graphviz preserves input order, but match on (tail,head) names to be safe.
+  const byPair = new Map();
+  emitted.forEach((e, i) => {
+    const key = `n${arr.indexOf(nodes.get(e.from))}>n${arr.indexOf(nodes.get(e.to))}`;
+    (byPair.get(key) || byPair.set(key, []).get(key)).push(e);
+  });
+  for (const ge of json.edges || []) {
+    const key = `${gvidName.get(ge.tail)}>${gvidName.get(ge.head)}`;
+    const queue = byPair.get(key);
+    const e = queue && queue.shift();
+    if (!e) continue;
+    const draw = (ge._draw_ || []).find((d) => d.op === "b" || d.op === "B");
+    if (draw && Array.isArray(draw.points)) {
+      e.spline = draw.points.map(([x, y]) => toWorld(x, y));
+    }
+  }
+}
+// golden-spiral seed for the force sim (its natural default).
+function layoutSpiral() {
+  let i = 0;
+  for (const n of nodes.values()) {
+    const ang = i * 2.399963;
+    const rad = 30 + 26 * Math.sqrt(i + 1);
+    n.x = Math.cos(ang) * rad; n.y = Math.sin(ang) * rad;
+    i++;
+  }
+}
+// Relax the force sim (synchronous pre-settle so nodes don't visibly fly), frame.
+function relaxAndFrame() {
+  for (const n of nodes.values()) { n.vx = 0; n.vy = 0; }
   heat = 1;
   for (let i = 0; i < 320; i++) stepForces();
   heat = 0.1;
   positionAll();
   fitView();
+}
+// First graph → settle the force web; later growth re-warms (force) or recomputes
+// the frozen engine layout so new nodes get placed without jerking the framing.
+function applyGraphLayout() {
+  if (!settledOnce && nodes.size) {
+    settledOnce = true;
+    setLayout(layoutId);
+  } else if (simFrozen) {
+    setLayout(layoutId);
+  } else {
+    reheat(1);
+  }
+}
+// Explicit switch from a control/keypress. Force = seed spiral + relax the sim;
+// a graphviz engine = compute the DOT layout, freeze the sim, snap to its shape.
+async function setLayout(id) {
+  const L = LAYOUTS.find((l) => l.id === id);
+  if (!L) return;
+  layoutId = id;
+  updateLayoutButtons();
+  for (const n of nodes.values()) n.fixed = false;
+  if (!L.engine) {
+    simFrozen = false;
+    for (const e of edges) e.spline = null;
+    layoutSpiral();
+    relaxAndFrame();
+    return;
+  }
+  try {
+    const gv = await loadGraphviz();
+    const { dot, arr, emitted } = buildDot(L.engine);
+    const json = JSON.parse(gv.layout(dot, "json", L.engine));
+    applyEnginePositions(json, arr, emitted);
+    simFrozen = true;
+    heat = 0;
+    positionAll();
+    fitView();
+  } catch (err) {
+    console.error(`layout ${id} failed:`, err);
+    simFrozen = false;
+    layoutSpiral();
+    relaxAndFrame();
+  }
+}
+function updateLayoutButtons() {
+  for (const b of document.querySelectorAll("#layouts button")) {
+    b.classList.toggle("on", b.dataset.layout === layoutId);
+  }
 }
 
 // ───────────────────────────────────────────────────────────────── the DOM ──
@@ -453,9 +634,14 @@ const defs = svg.querySelector("defs");
 const hintEl = document.getElementById("hint");
 let view = { x: 0, y: 0, k: 1 };   // pan (x,y) + zoom (k)
 
+// markerUnits=userSpaceOnUse → arrows are a fixed world size (don't vanish on
+// thin edges, and pan/zoom with the graph rather than scaling with stroke width).
 defs.innerHTML = `
-  <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
-    <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+    <path d="M0 0.5 L10 5 L0 9.5 z" fill="currentColor"/>
+  </marker>
+  <marker id="arrowmid" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="20" markerHeight="20" markerUnits="userSpaceOnUse" orient="auto">
+    <path d="M0 0.5 L10 5 L0 9.5 z" fill="currentColor"/>
   </marker>`;
 
 function isOrphan(topicId) {
@@ -496,7 +682,7 @@ function buildDom() {
     const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
     p.setAttribute("stroke", "var(--border)");
     p.setAttribute("stroke-width", "1.5");
-    if (e.directed) p.setAttribute("marker-end", "url(#arrow)");
+    if (e.directed) { p.setAttribute("marker-mid", "url(#arrowmid)"); p.setAttribute("marker-end", "url(#arrow)"); }
     svg.appendChild(p);
     e.el = p;
     const lab = document.createElement("div");
@@ -511,6 +697,15 @@ function buildDom() {
 
 function hubOf(e) { const a = nodes.get(e.from); return a.kind === "topic" ? a : nodes.get(e.to); }
 function accentColor(e) { return `var(${hubOf(e).accent})`; }
+// A "terminal" edge dead-ends at a leaf topic: one missing either a publisher or
+// a subscriber, so it's not part of a complete pub→topic→sub path. Both pub-only
+// (nobody listens) and sub-only (nobody produces) count. Those draw thin; a topic
+// wired on both sides is a live pass-through → drawn thicker.
+function topicIsLeaf(topicId) {
+  const r = routes.get(topicId);
+  return !!(r && (r.pubs.size === 0 || r.subs.size === 0));
+}
+function edgeIsTerminal(e) { return topicIsLeaf(hubOf(e).id); }
 
 // Direct edges: a border-to-border line with a slight quadratic bow. The bow
 // keeps a↔b pairs (a pub and a sub on the same channel) from stacking on top of
@@ -531,10 +726,15 @@ function edgeGeom(e) {
   const pb = borderPoint(b, -ux, -uy);
   const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
   const bow = Math.min(26, dist * 0.13);
-  const cx = mx - uy * bow, cy = my + ux * bow;    // offset along the edge normal
+  const cx = mx - uy * bow, cy = my + ux * bow;    // control point (edge normal)
+  // Split the quadratic at t=0.5 so there's an on-curve vertex at the middle for
+  // marker-mid (a flow-direction arrowhead) to sit on, oriented along the edge.
+  const q0x = (pa.x + cx) / 2, q0y = (pa.y + cy) / 2;
+  const q1x = (cx + pb.x) / 2, q1y = (cy + pb.y) / 2;
+  const midx = (q0x + q1x) / 2, midy = (q0y + q1y) / 2;
   return {
-    d: `M ${pa.x.toFixed(1)} ${pa.y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${pb.x.toFixed(1)} ${pb.y.toFixed(1)}`,
-    mid: { x: cx, y: cy },
+    d: `M ${pa.x.toFixed(1)} ${pa.y.toFixed(1)} Q ${q0x.toFixed(1)} ${q0y.toFixed(1)} ${midx.toFixed(1)} ${midy.toFixed(1)} Q ${q1x.toFixed(1)} ${q1y.toFixed(1)} ${pb.x.toFixed(1)} ${pb.y.toFixed(1)}`,
+    mid: { x: midx, y: midy },
   };
 }
 function positionNode(n) {
@@ -544,6 +744,19 @@ function positionNode(n) {
 }
 function positionEdge(e) {
   if (!e.el) return;
+  // frozen graphviz layout: draw its bspline (M + cubic segments) verbatim.
+  if (simFrozen && e.spline && e.spline.length >= 4) {
+    const pts = e.spline;
+    let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+    for (let i = 1; i + 2 < pts.length; i += 3) {
+      d += ` C ${pts[i].x.toFixed(1)} ${pts[i].y.toFixed(1)}` +
+        ` ${pts[i + 1].x.toFixed(1)} ${pts[i + 1].y.toFixed(1)}` +
+        ` ${pts[i + 2].x.toFixed(1)} ${pts[i + 2].y.toFixed(1)}`;
+    }
+    e.el.setAttribute("d", d);
+    if (e.lab) { const mid = pts[Math.floor(pts.length / 2)]; e.lab.style.left = mid.x + "px"; e.lab.style.top = mid.y + "px"; }
+    return;
+  }
   const g = edgeGeom(e);
   e.el.setAttribute("d", g.d);
   if (e.lab) { e.lab.style.left = g.mid.x + "px"; e.lab.style.top = g.mid.y + "px"; }
@@ -594,6 +807,22 @@ document.getElementById("zin").onclick = () => zoomAt(innerWidth / 2, innerHeigh
 document.getElementById("zout").onclick = () => zoomAt(innerWidth / 2, innerHeight / 2, 1 / 1.2);
 document.getElementById("fit").onclick = fitView;
 
+// layout switcher: one button per algorithm + `G` to cycle
+const layoutsEl = document.getElementById("layouts");
+for (const l of LAYOUTS) {
+  const b = document.createElement("button");
+  b.textContent = l.label;
+  b.dataset.layout = l.id;
+  b.title = `${l.label} layout`;
+  b.onclick = () => setLayout(l.id);
+  layoutsEl.appendChild(b);
+}
+function cycleLayout(dir = 1) {
+  const i = LAYOUTS.findIndex((l) => l.id === layoutId);
+  setLayout(LAYOUTS[(i + dir + LAYOUTS.length) % LAYOUTS.length].id);
+}
+updateLayoutButtons();
+
 // ─────────────────────────────────────────────────────── drag: pan & nodes ──
 let panning = null, dragNode = null, moved = false;
 flow.addEventListener("mousedown", (ev) => {
@@ -617,7 +846,8 @@ addEventListener("mousemove", (ev) => {
     dragNode.n.y = dragNode.oy + dy / view.k;
     reheat(0.5);
     positionNode(dragNode.n);
-    for (const e of edgesOf(dragNode.n)) positionEdge(e);
+    // a dragged node's graphviz splines no longer fit; fall back to live geometry
+    for (const e of edgesOf(dragNode.n)) { e.spline = null; positionEdge(e); }
     sizeSvg();
     return;
   }
@@ -768,9 +998,9 @@ dimApp.receiveRequest((tag, msg) => {
     // topic node by normalized name; ignore channels not in the graph.
     for (const ev of msg.events) {
       const [transport, channel, count, bytes] = ev;
-      const nodeId = topicBase.get(normBase(channel));
-      if (!nodeId) continue;
-      noteTraffic(nodeId, count, bytes, transport);
+      const ids = topicBase.get(normBase(channel));
+      if (!ids) continue;
+      for (const nodeId of ids) noteTraffic(nodeId, count, bytes, transport);
     }
   }
 });
@@ -778,7 +1008,7 @@ setInterval(() => { if (Date.now() - lastMsg > 4000) { connEl.textContent = "○
 dimApp.send("hello");
 
 // debug handle (console poking / offline rendering checks)
-globalThis.__lcmflow = { applyGraph, noteTraffic, nodes, edges, routes, topicBase, moduleInfo, fitView, showCard, toggleCardPin, setHover };
+globalThis.__lcmflow = { applyGraph, noteTraffic, nodes, edges, routes, topicBase, moduleInfo, fitView, showCard, toggleCardPin, setHover, setLayout, LAYOUTS, relaxAndFrame };
 
 // ─────────────────────────────────────────────────────────── animation ──
 let paused = false;
@@ -788,16 +1018,19 @@ function refreshEdges() {
     const on = hovered && (e.from === hovered.id || e.to === hovered.id);
     const lit = e.active > 0.05;
     const hot = on || lit;
-    e.el.style.color = hot ? accentColor(e) : "var(--border)";       // arrow marker (currentColor)
-    e.el.style.stroke = hot ? accentColor(e) : "var(--border)";
-    e.el.style.strokeWidth = on ? "2.4" : lit ? "2" : "1.5";
+    // resting edges/arrows are subdued but readable; terminal (dead-end) edges thin
+    const rest = "color-mix(in oklch, var(--muted-fg) 55%, var(--border))";
+    const base = edgeIsTerminal(e) ? 1.1 : 2.4;
+    e.el.style.color = hot ? accentColor(e) : rest;                  // arrow marker (currentColor)
+    e.el.style.stroke = hot ? accentColor(e) : rest;
+    e.el.style.strokeWidth = (on ? base + 1.1 : lit ? base + 0.6 : base).toFixed(1);
     e.el.style.strokeDasharray = lit ? "5 6" : "none";
     if (e.lab) e.lab.classList.toggle("show", hot);
   }
 }
 function animate() {
   requestAnimationFrame(animate);
-  if (!paused && heat > 0.04) {
+  if (!paused && !simFrozen && heat > 0.04) {
     stepForces();
     heat *= 0.985;
     if (heat < 0.04) heat = 0;
@@ -875,6 +1108,8 @@ addEventListener("keydown", (ev) => {
   if (ev.key === "d") document.getElementById("dtop").classList.toggle("show");
   if (ev.key === "l") document.body.classList.toggle("dark");
   if (ev.key === "f" || ev.key === "0") fitView();
+  if (ev.key === "g") cycleLayout(1);
+  if (ev.key === "G") cycleLayout(-1);
 });
 
 // follow OS light/dark (same pattern as the rest of the desktop)
