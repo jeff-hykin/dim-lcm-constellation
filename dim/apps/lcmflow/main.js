@@ -1,24 +1,29 @@
 // lcmflow — backend half (runs in the Deno desktop process).
 //
-// This is a thin launcher/relay around the native `spy` binary (Rust, in ./spy).
-// The spy passively sniffs BOTH transports dimos uses — LCM (UDP multicast) and
-// Zenoh (peer `**` subscriber) — and prints newline-delimited JSON metadata on
-// stdout. We forward those frames to the browser over the app-bus, and recover
-// the module↔topic topology from the newest DimOS run log's "Transport" events.
+// The graph itself comes from the currently-active DimOS *blueprint*: we ask the
+// desktop server (dimos-helm) for its blueprint/module metadata — the same source
+// the blueprint launcher uses — and build a module↔topic graph with real pub/sub
+// direction and docstrings. The native `spy` binary (Rust, in ./spy) passively
+// sniffs BOTH transports dimos uses — LCM (UDP multicast) and Zenoh (peer `**`
+// subscriber) — and prints newline-delimited JSON on stdout; those frames only
+// *animate* the already-drawn graph (live rates + lit edges), they don't define it.
 //
 // dim's desktop only auto-launches a `main.js`/`main.py` backend (no native-binary
 // hook), so this JS shim is the entrypoint; the actual protocol spying is Rust.
 
 import { DimAppBackend } from "https://esm.sh/gh/jeff-hykin/dim-app@v0.3.0/backend.js"
 
-const TOPOLOGY_RESCAN_MS = 5000
+const GRAPH_RESCAN_MS = 4000
 const SPY_RESTART_MS = 2000
+// The desktop server (dimos-helm) that serves this app also exposes the blueprint
+// metadata API. It normally lives on :1024; allow an override for odd setups.
+const HELM_URL = Deno.env.get("DIM_HELM_URL") ?? "http://localhost:1024"
 
 const dimApp = new DimAppBackend()
 
 const home = Deno.env.get("HOME") ?? ""
 const appDir = import.meta.dirname ?? "."
-let topology = { source: "", edges: [] }
+let graph = { blueprint: "", modules: {}, edges: [] }
 
 // ── dtop: per-worker resource stats ───────────────────────────────────────────
 // /dimos/resource_stats is pickle-encoded; the spy forwards the raw payload as
@@ -46,98 +51,87 @@ function onResourceB64(b64) {
     } catch { /* undecodable frame — keep last */ }
 }
 
-// ── topology: parse "Transport" events from the newest run log ────────────────
-function registryLogs() {
-    const found = []
-    let entries
+// ── graph: build from the active blueprint's module metadata ──────────────────
+// The desktop server exposes /api/dimos-info (blueprints + per-module typed
+// inputs/outputs + docstrings) and tracks launched blueprints in runs.json. We
+// pick the active blueprint, then join module streams by name to form topics with
+// real pub/sub direction — publishers are a module's `outputs`, subscribers its
+// `inputs`. (Remapping can rename streams, so a handful of topics may not fuse;
+// good enough — the runtime spy still lights up whatever actually flows.)
+async function fetchJson(url) {
     try {
-        entries = Deno.readDirSync(`${home}/.local/state/dimos/runs`)
-    } catch {
-        return found
-    }
-    for (const entry of entries) {
-        if (!entry.name.endsWith(".json")) continue
-        try {
-            const rec = JSON.parse(Deno.readTextFileSync(`${home}/.local/state/dimos/runs/${entry.name}`))
-            if (!rec.log_dir) continue
-            const candidate = `${rec.log_dir}/main.jsonl`
-            const stat = Deno.statSync(candidate)
-            found.push({ path: candidate, mtime: stat.mtime?.getTime() ?? 0 })
-        } catch { /* stale entry */ }
-    }
-    return found
+        const res = await fetch(url)
+        if (!res.ok) { await res.body?.cancel(); return null }
+        return await res.json()
+    } catch { return null }
 }
-function findNewestRunLog() {
-    let newest = null
-    for (const c of registryLogs()) {
-        if (!newest || c.mtime > newest.mtime) newest = c
-    }
-    if (newest) return newest.path
-    for (const root of [`${Deno.cwd()}/logs`, `${home}/.local/state/dimos/logs`]) {
-        let entries
-        try {
-            entries = Deno.readDirSync(root)
-        } catch {
-            continue
-        }
-        for (const entry of entries) {
-            if (!entry.isDirectory) continue
-            const candidate = `${root}/${entry.name}/main.jsonl`
-            try {
-                const m = Deno.statSync(candidate).mtime?.getTime() ?? 0
-                if (!newest || m > newest.mtime) newest = { path: candidate, mtime: m }
-            } catch { /* no main.jsonl */ }
-        }
-    }
-    return newest?.path ?? null
+function readRuns() {
+    try {
+        return JSON.parse(Deno.readTextFileSync(`${home}/.dimos/data/runs.json`))
+    } catch { return {} }
 }
-function parseTopology(path) {
-    const edges = []
+function alivePids() {
+    // one `ps` snapshot → set of live pids, so we can prefer a running blueprint.
+    try {
+        const out = new Deno.Command("ps", { args: ["-eo", "pid="], stdout: "piped" }).outputSync()
+        const text = new TextDecoder().decode(out.stdout)
+        return new Set(text.split("\n").map((s) => Number(s.trim())).filter(Boolean))
+    } catch { return new Set() }
+}
+// newest-started run whose name is a known blueprint (prefer one still alive).
+function pickActiveBlueprint(knownNames) {
+    const runs = readRuns()
+    const live = alivePids()
+    const rows = Object.entries(runs)
+        .filter(([name]) => knownNames.has(name))
+        .map(([name, r]) => ({ name, started: r.started_at ?? "", alive: live.has(Number(r.pid)) }))
+    if (rows.length === 0) return null
+    rows.sort((a, b) => (b.alive - a.alive) || b.started.localeCompare(a.started))
+    return rows[0].name
+}
+function buildGraph(bp, info) {
+    const modsById = new Map(info.modules.map((m) => [m.id, m]))
+    const modules = {}          // id -> card payload
+    const edges = []            // { module, topic, type, direction }
     const seen = new Set()
-    let text
-    try {
-        text = Deno.readTextFileSync(path)
-    } catch {
-        return edges
+    const addEdge = (module, topic, type, direction) => {
+        const key = `${module}|${topic}|${direction}`
+        if (seen.has(key)) return
+        seen.add(key)
+        edges.push({ module, topic, type, direction })
     }
-    for (const line of text.split("\n")) {
-        if (!line.includes('"Transport"')) continue
-        try {
-            const rec = JSON.parse(line)
-            if (rec.event !== "Transport" || !rec.module) continue
-            const name = rec.original_name ?? rec.name ?? ""
-            const edge = {
-                module: rec.module, name, topic: rec.topic ?? rec.name ?? "",
-                type: rec.type ?? "", transport: rec.transport ?? "", direction: "",
-            }
-            const key = `${edge.module}|${edge.topic}|${edge.direction}`
-            if (!seen.has(key)) {
-                seen.add(key)
-                edges.push(edge)
-            }
-        } catch { /* partial line */ }
+    for (const id of bp.modules) {
+        const m = modsById.get(id)
+        if (!m) continue
+        modules[id] = {
+            id, label: m.class_name ?? id, doc: m.doc ?? "",
+            inputs: m.inputs ?? [], outputs: m.outputs ?? [],
+            rpcs: m.rpcs ?? [], skills: m.skills ?? [],
+        }
+        for (const s of m.outputs ?? []) addEdge(id, s.name, s.type ?? "", "out")
+        for (const s of m.inputs ?? []) addEdge(id, s.name, s.type ?? "", "in")
     }
-    return edges
+    return { blueprint: bp.name, modules, edges }
 }
-function refreshTopology() {
-    const path = findNewestRunLog()
-    if (!path) return false
-    const edges = parseTopology(path)
-    if (edges.length === 0 && topology.edges.length > 0) return false
-    const changed = path !== topology.source || JSON.stringify(edges) !== JSON.stringify(topology.edges)
-    topology = { source: path, edges }
-    return changed
+async function refreshGraph() {
+    const info = await fetchJson(`${HELM_URL}/api/dimos-info`)
+    if (!info || !Array.isArray(info.blueprints)) return false
+    const byName = new Map(info.blueprints.map((b) => [b.name, b]))
+    const active = pickActiveBlueprint(new Set(byName.keys()))
+    if (!active) return false
+    const next = buildGraph(byName.get(active), info)
+    if (JSON.stringify(next) === JSON.stringify(graph)) return false
+    graph = next
+    return true
 }
-function sendTopology() {
-    try {
-        dimApp.send("lcmflow", { kind: "topology", ...topology })
-    } catch { /* skip */ }
+function sendGraph() {
+    try { dimApp.send("lcmflow", { kind: "graph", ...graph }) } catch { /* skip */ }
 }
 
-// topology now + rescan; a fresh frontend `hello` gets the current topology
-refreshTopology()
-setInterval(() => { if (refreshTopology()) sendTopology() }, TOPOLOGY_RESCAN_MS)
-dimApp.onReceive((kind) => { if (kind === "hello") sendTopology() })
+// graph now + rescan; a fresh frontend `hello` gets the current graph
+refreshGraph().then((ok) => { if (ok) sendGraph() })
+setInterval(() => { refreshGraph().then((ok) => { if (ok) sendGraph() }) }, GRAPH_RESCAN_MS)
+dimApp.onReceive((kind) => { if (kind === "hello") sendGraph() })
 
 // ── native spy: LCM + Zenoh metadata over stdout ─────────────────────────────
 function spyBinPath() {

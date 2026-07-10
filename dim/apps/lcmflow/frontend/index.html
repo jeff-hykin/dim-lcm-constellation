@@ -17,222 +17,226 @@ limitations under the License.
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Dimensional · Transport Flow</title>
+<title>Dimensional · Module Flow</title>
 <link rel="stylesheet" href="/assets/theme.css" />
 <style>
-  /* Map this viz's legacy color names onto the shared Science theme tokens so
-     it themes with the rest of the desktop (light default, `dark` on body). */
-  body.science {
-    --cyan: var(--info);
-    --line: var(--border);
-    --text: var(--fg);
-    --mut: var(--muted-fg);
-    --dim: color-mix(in oklch, var(--muted-fg) 42%, transparent);
+  /* A React-Flow-style module/topic graph, but hand-rolled with DOM nodes + one
+     SVG edge layer (no React, no canvas). Everything lives inside `.viewport`,
+     which is pan/zoomed with a single CSS transform, so node cards, edge paths
+     and labels all scale together and stay crisp. Colors come from the shared
+     Science theme (/assets/theme.css) via `var(--…)` inline styles, so the graph
+     tracks light/dark automatically with no per-token JS probing. */
+  :root { --node-radius: 10px; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg);
     font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
-  }
-  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden;
-               font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
-               font-variant-numeric: tabular-nums; }
-  canvas#view { display: block; position: fixed; inset: 0; }
+    color: var(--fg); font-variant-numeric: tabular-nums; }
 
-  .panel {
-    position: fixed; background: color-mix(in oklch, var(--card) 88%, transparent); border: 1px solid var(--line);
-    color: var(--text); font-size: 11px; padding: 0;
-  }
-  .panel h2 {
-    margin: 0; font-size: 9px; font-weight: 600; letter-spacing: 2.5px; color: var(--mut);
-    padding: 8px 12px 7px; border-bottom: 1px solid var(--line);
-  }
-  .panel h2 b { color: var(--cyan); font-weight: 600; }
-  .panel .body { padding: 6px 12px 9px; }
+  /* ── flow surface ─────────────────────────────────────────────────────── */
+  #flow { position: fixed; inset: 0; overflow: hidden; cursor: grab;
+    /* React-Flow's signature dotted lattice; it pans/zooms via background-* set in JS */
+    background-color: var(--bg);
+    background-image: radial-gradient(color-mix(in oklch, var(--muted-fg) 40%, transparent) 1px, transparent 0);
+    background-size: 22px 22px; background-position: 0 0; }
+  #flow.grabbing { cursor: grabbing; }
+  #viewport { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
+  #edges { position: absolute; overflow: visible; pointer-events: none; }
+  #edges path { fill: none; }
 
-  #topbar {
-    top: 0; left: 0; right: 0; height: 38px; display: flex; align-items: center;
-    gap: 28px; padding: 0 16px; border-left: none; border-right: none; border-top: none;
-    font-size: 11px;
-  }
-  #topbar .brand { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
-  #topbar .brand img { height: 13px; width: auto; opacity: 0.92; display: block; }
-  #topbar .logo { font-size: 12px; font-weight: 700; letter-spacing: 3px; color: var(--cyan); white-space: nowrap; }
-  #topbar .logo span { color: var(--dim); font-weight: 400; letter-spacing: 2px; }
-  #topbar .sep { color: var(--line); }
-  .readout { color: var(--mut); white-space: nowrap; }
-  .readout b { color: var(--text); font-weight: 600; }
-  #topbar .spacer { flex: 1; }
-  #idle { display: none; color: var(--warn); letter-spacing: 1px; }
-  #clock { color: var(--mut); letter-spacing: 1px; }
-  #conn { letter-spacing: 1px; color: var(--muted-fg); }
-  #conn.live { color: var(--cyan); }
+  /* ── nodes ────────────────────────────────────────────────────────────── */
+  .node { position: absolute; box-sizing: border-box; user-select: none; cursor: pointer;
+    border: 1px solid var(--border); border-radius: var(--node-radius);
+    background: var(--card); box-shadow: 0 1px 2px rgba(0,0,0,0.18), 0 4px 14px rgba(0,0,0,0.10);
+    transition: box-shadow .12s ease, border-color .12s ease, opacity .12s ease; }
+  .node.dim { opacity: 0.26; }
+  .node.hi { border-color: color-mix(in oklch, var(--accent, var(--info)) 70%, var(--border));
+    box-shadow: 0 0 0 1px var(--accent, var(--info)), 0 6px 20px rgba(0,0,0,0.22); }
+  .node.pulse { border-color: var(--accent, var(--info)); }
 
-  #modules { top: 52px; left: 14px; width: 256px; }
-  #topics  { top: 52px; right: 14px; width: 320px; }
-  #dtop    { right: 14px; bottom: 58px; width: 320px; max-height: 40vh; overflow: auto; }
-  .row .cpu { flex: 0 0 46px; text-align: right; color: var(--mut); white-space: nowrap; }
-  .row .mem { flex: 0 0 64px; text-align: right; color: var(--mut); white-space: nowrap; }
-  .row .cpu b, .row .mem b { color: var(--cyan); font-weight: 600; }
-  .panel .body { overflow: hidden; }
-  /* flexbox rows that shrink the name column instead of overflowing */
-  .row { display: flex; align-items: baseline; gap: 8px; font-size: 11px; padding: 2px 0 1px; }
-  .row .name { flex: 1 1 auto; min-width: 0; color: var(--text);
-               overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row .mark { flex: 0 0 auto; color: var(--dim); }
-  .row .hz  { flex: 0 0 56px; text-align: right; color: var(--mut); white-space: nowrap; }
-  .row .bps { flex: 0 0 70px; text-align: right; color: var(--mut); white-space: nowrap; }
-  .row .hz b, .row .bps b { color: var(--cyan); font-weight: 600; }
-  .meter { height: 2px; margin: 1px 0 4px; background: color-mix(in oklch, var(--info) 10%, transparent); }
-  .meter i { display: block; height: 100%; background: var(--cyan); opacity: 0.75; }
-  .empty { color: var(--dim); font-size: 11px; padding: 4px 0; }
+  /* module = rounded card with a left accent rail + header row */
+  .node.module { min-width: 152px;
+    background: color-mix(in oklch, var(--card) 88%, var(--info) 12%);
+    border-color: color-mix(in oklch, var(--info) 44%, var(--border)); }
+  .node.module::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
+    border-radius: var(--node-radius) 0 0 var(--node-radius); background: var(--info); }
+  .node.module .head { display: flex; align-items: center; gap: 8px; padding: 9px 12px 9px 15px; }
+  .node.module .kind { font-size: 8px; letter-spacing: 1.5px; font-weight: 700; color: var(--info); }
+  .node.module .name { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 600; color: var(--fg);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .node.module .rate { flex: none; font-size: 10.5px; color: var(--muted-fg); white-space: nowrap; }
+  .node.module .rate b { color: var(--info); font-weight: 600; }
+  .node.module .chev { flex: none; font-size: 9px; color: var(--muted-fg); transition: transform .12s ease; }
+  .node.module.open .chev { transform: rotate(90deg); }
 
-  #bottombar { bottom: 14px; left: 50%; transform: translateX(-50%);
-               display: flex; align-items: center; gap: 14px; padding: 7px 14px; }
-  #spark { width: 300px; height: 34px; display: block; }
+  /* expanded body: the module's published / subscribed topics with live Hz */
+  .node.module .body { display: none; border-top: 1px solid var(--border); padding: 6px 12px 9px 14px; }
+  .node.module.open .body { display: block; }
+  .node.module .grp { font-size: 8px; letter-spacing: 1.5px; color: var(--muted-fg); margin: 5px 0 3px; }
+  .node.module .trow { display: flex; align-items: baseline; gap: 8px; font-size: 11px; padding: 1px 0; }
+  .node.module .trow .tn { flex: 1 1 auto; min-width: 0; color: var(--fg);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .node.module .trow .th { flex: none; color: var(--muted-fg); white-space: nowrap; }
+  .node.module .trow .th b { color: var(--accent, var(--info)); font-weight: 600; }
+  .node.module .trow .arrow { flex: none; color: var(--muted-fg); font-size: 10px; }
 
-  #help { position: fixed; bottom: 16px; left: 16px; color: var(--dim); font-size: 10px; letter-spacing: 1.5px; user-select: none; }
-  #legend { position: fixed; bottom: 34px; left: 16px; color: var(--mut); font-size: 10px; letter-spacing: 1.5px; user-select: none; }
-  #legend b { color: var(--text); font-weight: 600; }
+  /* topic = compact pill, colored by message type */
+  .node.topic { display: flex; flex-direction: column; gap: 0; padding: 3px 11px; border-radius: 999px;
+    border-width: 1.5px; border-color: color-mix(in oklch, var(--accent, var(--info)) 80%, var(--border)); }
+  .node.topic .name { font-size: 11px; font-weight: 600; color: color-mix(in oklch, var(--fg) 62%, var(--muted-fg)); white-space: nowrap; line-height: 1.3; }
+  .node.topic .type { display: none; font-size: 8px; letter-spacing: .5px; color: var(--accent, var(--info)); white-space: nowrap; line-height: 1.2; }
+  .node.topic:hover .type, .node.topic.hi .type { display: block; }
+  /* nobody subscribes → gray it out (override the type accent) */
+  .node.topic.orphan { border-style: dashed; --accent: var(--muted-fg);
+    border-color: color-mix(in oklch, var(--muted-fg) 42%, var(--border)); }
 
-  #tooltip {
-    display: none; position: fixed; z-index: 10; pointer-events: none;
-    max-width: 420px; font-size: 11px; line-height: 1.75; padding: 8px 12px;
-  }
-  #tooltip .tname { color: var(--cyan); font-weight: 600; }
-  #tooltip .trow { color: var(--mut); }
-  #tooltip .trow b { color: var(--text); font-weight: 500; }
+  /* the little connection handles React-Flow draws on each node edge */
+  .handle { position: absolute; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--card); border: 1.5px solid var(--muted-fg); top: 50%; transform: translateY(-50%); }
+  .handle.l { left: -4px; } .handle.r { right: -4px; }
+  .node.hi .handle { border-color: var(--accent, var(--info)); }
 
-  /* Medium windows: shrink the side panels so they don't swallow the graph.
-     Width only — never `display` — so the T/M/D show-hide toggles keep working. */
-  @media (max-width: 820px) {
-    #topbar { gap: 14px; padding: 0 12px; }
-    #r-total { display: none; }
-    #modules { width: 208px; }
-    #topics, #dtop { width: 236px; }
-  }
+  /* edge labels (topic name / live Hz) float over the SVG at each edge midpoint */
+  .elabel { position: absolute; transform: translate(-50%, -50%); pointer-events: none;
+    font-size: 11px; padding: 1px 7px; border-radius: 999px; white-space: nowrap;
+    background: color-mix(in oklch, var(--card) 88%, transparent); border: 1px solid var(--border);
+    color: var(--muted-fg); opacity: 0; transition: opacity .12s ease; }
+  .elabel.show { opacity: 1; }
+  .elabel b { color: var(--accent, var(--info)); font-weight: 600; }
 
-  /* Narrow / mobile: abandon the floating-overlay layout entirely and stack in
-     normal document flow — TOPICS, then MODULES, then DTOP, then the node view
-     flows below. Panels go static/full-width; the canvas becomes a boxed flow
-     element (JS reads its measured size via VW/VH, so the graph fills it). */
-  @media (max-width: 620px) {
-    html, body { height: auto; min-height: 100%; overflow-x: hidden; overflow-y: auto; }
-    body { display: flex; flex-direction: column; }
-    #topbar {
-      position: sticky; top: 0; order: 0; z-index: 5;
-      height: auto; flex-wrap: wrap; gap: 6px 12px; padding: 6px 10px;
-    }
-    #topbar .logo { font-size: 10.5px; letter-spacing: 1.5px; }
-    #topbar .logo span { display: none; }
-    .readout, #r-graph, #r-rate { font-size: 10px; }
-    #clock, #idle { display: none; }
-    #topbar .spacer { display: none; }
+  /* ── chrome: toolbar, controls, legend ────────────────────────────────── */
+  .bar { position: fixed; z-index: 6; background: color-mix(in oklch, var(--card) 90%, transparent);
+    border: 1px solid var(--border); border-radius: 10px; backdrop-filter: blur(8px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18); }
+  #toolbar { top: 12px; left: 12px; display: flex; align-items: center; gap: 16px; padding: 8px 14px; font-size: 11px; }
+  #toolbar .logo { font-size: 12px; font-weight: 700; letter-spacing: 2.5px; color: var(--info); }
+  #toolbar .logo span { color: var(--muted-fg); font-weight: 400; letter-spacing: 1.5px; }
+  #toolbar .sep { width: 1px; height: 16px; background: var(--border); }
+  #toolbar .readout { color: var(--muted-fg); white-space: nowrap; }
+  #toolbar .readout b { color: var(--fg); font-weight: 600; }
+  #conn { letter-spacing: 1px; color: var(--muted-fg); white-space: nowrap; }
+  #conn.live { color: var(--info); }
 
-    #topics, #modules, #dtop {
-      position: static; inset: auto; width: auto;
-      max-height: none; margin: 8px 10px 0;
-    }
-    #topics { order: 1; }
-    #modules { order: 2; }
-    #dtop { order: 3; }
-    .panel .body { overflow: visible; }
+  #controls { bottom: 16px; left: 16px; display: flex; flex-direction: column; padding: 4px; gap: 2px; }
+  #controls button { appearance: none; width: 30px; height: 28px; font: inherit; font-size: 15px; line-height: 1;
+    cursor: pointer; color: var(--fg); background: transparent; border: 0; border-radius: 7px; }
+  #controls button:hover { background: color-mix(in oklch, var(--muted-fg) 16%, transparent); }
+  #controls .fit { font-size: 11px; letter-spacing: 1px; }
 
-    canvas#view {
-      position: relative; inset: auto; order: 4;
-      width: 100%; height: 68vh; min-height: 340px; margin-top: 8px;
-    }
-    #bottombar, #legend, #help { display: none; }
-    #tooltip { display: none !important; }
-  }
+  #legend { position: fixed; bottom: 18px; left: 62px; z-index: 6; display: flex; gap: 16px;
+    font-size: 10px; letter-spacing: 1px; color: var(--muted-fg); user-select: none; }
+  #legend .k { display: inline-flex; align-items: center; gap: 6px; }
+  #legend .sw { width: 18px; height: 10px; border: 1px solid var(--border); border-radius: 3px; }
+  #legend .sw.mod { background: var(--card); border-left: 3px solid var(--info); }
+  #legend .sw.top { border-radius: 999px; border-color: color-mix(in oklch, var(--info) 45%, var(--border)); }
+
+  #help { position: fixed; bottom: 18px; right: 16px; z-index: 6; color: var(--muted-fg);
+    font-size: 10px; letter-spacing: 1px; user-select: none; opacity: 0.8; }
+
+  /* dtop (per-worker CPU/RAM) kept as an opt-in side panel; toggle with D */
+  #dtop { top: 12px; right: 12px; width: 264px; z-index: 6; padding: 0; display: none; }
+  #dtop.show { display: block; }
+  #dtop h2 { margin: 0; font-size: 9px; font-weight: 600; letter-spacing: 2px; color: var(--muted-fg);
+    padding: 9px 12px 8px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
+  #dtop .body { padding: 6px 12px 9px; }
+  #dtop .row { display: flex; align-items: baseline; gap: 8px; font-size: 11px; padding: 2px 0; }
+  #dtop .row .n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #dtop .row .c { flex: none; color: var(--muted-fg); } #dtop .row .c b { color: var(--info); font-weight: 600; }
+  #dtop .empty { color: var(--muted-fg); font-size: 11px; padding: 4px 0; }
+
+  /* module card — launcher-style detail popover on hover/click */
+  #card { width: 300px; max-height: 74vh; overflow-y: auto; padding: 0; display: none;
+    top: 0; left: 0; z-index: 8; }
+  #card.show { display: block; }
+  #card.pinned { box-shadow: 0 6px 22px rgba(0,0,0,0.28); border-color: color-mix(in oklch, var(--info) 40%, var(--border)); }
+  #card .chd { display: flex; align-items: center; gap: 8px; padding: 10px 12px 8px;
+    border-bottom: 1px solid var(--border); position: sticky; top: 0;
+    background: color-mix(in oklch, var(--card) 94%, transparent); backdrop-filter: blur(8px); }
+  #card .chd .badge { font-size: 8px; letter-spacing: 1.5px; font-weight: 700; color: var(--info);
+    border: 1px solid color-mix(in oklch, var(--info) 45%, var(--border)); border-radius: 5px; padding: 2px 5px; }
+  #card .chd .nm { font-size: 13px; font-weight: 600; color: var(--fg); }
+  #card .chd .pin { margin-left: auto; font-size: 13px; color: var(--muted-fg); }
+  #card.pinned .chd .pin { color: var(--info); }
+  #card .cbody { padding: 9px 12px 12px; }
+  #card .doc { color: var(--muted-fg); font-size: 11px; line-height: 1.45; white-space: pre-wrap;
+    max-height: 7.5em; overflow: hidden; margin-bottom: 4px; }
+  #card .sec { margin-top: 9px; }
+  #card .sec > .lbl { font-size: 8px; letter-spacing: 1.5px; font-weight: 700; color: var(--muted-fg);
+    display: block; margin-bottom: 5px; }
+  #card .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  #card .chip { font-size: 10px; padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+    border: 1px solid color-mix(in oklch, var(--accent, var(--info)) 50%, var(--border));
+    color: color-mix(in oklch, var(--fg) 68%, var(--muted-fg)); }
+  #card .chip .ty { color: var(--accent, var(--info)); }
+  #card .chip .rt { color: var(--info); font-weight: 600; margin-left: 3px; }
+  #card .chip.out { --accent: var(--warn); } #card .chip.in { --accent: var(--ok); }
+  #card .mrow { font-size: 10px; color: color-mix(in oklch, var(--fg) 60%, var(--muted-fg));
+    padding: 1px 0; font-family: ui-monospace, SFMono-Regular, monospace; }
+  #card .mrow .ret { color: var(--muted-fg); }
+  #card .none { color: var(--muted-fg); font-size: 10px; }
+
+  #hint { position: fixed; inset: 0; z-index: 4; display: flex; align-items: center; justify-content: center;
+    pointer-events: none; color: var(--muted-fg); font-size: 13px; letter-spacing: .5px; }
+  #hint.hide { display: none; }
 </style>
 </head>
 <body class="science">
-<canvas id="view"></canvas>
 
-<div class="panel" id="topbar">
-  <div class="brand">
-    <span class="logo">TRANSPORT FLOW <span>/ CONSTELLATION</span></span>
+<div id="flow">
+  <div id="viewport">
+    <svg id="edges"><defs></defs></svg>
   </div>
-  <div class="readout" id="r-graph"><b>0</b> MOD · <b>0</b> TOP</div>
-  <div class="readout" id="r-rate"><b>0.0</b> Hz · <b>0 B</b>/s</div>
-  <div class="readout" id="r-total">Σ <b>0</b> · <b>0 B</b></div>
-  <div class="readout" id="idle">▲ BUS IDLE</div>
-  <div class="spacer"></div>
-  <div class="readout" id="r-fps" style="display:none"></div>
-  <div id="clock">--:--:--</div>
-  <div id="conn">○ OFFLINE</div>
 </div>
 
-<div class="panel" id="modules">
-  <h2>MODULES <b id="modcount"></b></h2>
-  <div class="body" id="modlist"></div>
+<div id="hint">waiting for a running stack — start a blueprint to see modules light up</div>
+
+<div class="bar" id="toolbar">
+  <span class="logo">MODULE FLOW <span>/ LCM · ZENOH</span></span>
+  <span class="sep"></span>
+  <span class="readout" id="r-graph"><b>0</b> modules · <b>0</b> topics</span>
+  <span class="readout" id="r-rate"><b>0.0</b> Hz · <b>0 B</b>/s</span>
+  <span class="sep"></span>
+  <span id="conn">○ offline</span>
 </div>
 
-<div class="panel" id="topics">
-  <h2>TOPICS <b id="topcount"></b> <span style="float:right; letter-spacing:1px">5s WINDOW</span></h2>
-  <div class="body" id="topiclist"></div>
+<div class="bar" id="controls">
+  <button id="zin"  title="zoom in">+</button>
+  <button id="zout" title="zoom out">−</button>
+  <button class="fit" id="fit" title="fit view">FIT</button>
 </div>
 
-<div class="panel" id="dtop">
-  <h2>DTOP · CPU/RAM <b id="dtopcount"></b> <span id="dtop-status" style="float:right; letter-spacing:1px; color:var(--muted-fg)">○ NO STREAM</span></h2>
-  <div class="body" id="dtoplist"></div>
+<div id="legend">
+  <span class="k"><span class="sw mod"></span> module</span>
+  <span class="k"><span class="sw top"></span> topic</span>
 </div>
 
-<div class="panel" id="bottombar">
-  <canvas id="spark" width="600" height="68"></canvas>
-  <div class="readout" id="r-spark"><b>0 B</b>/s</div>
+<div class="bar" id="dtop">
+  <h2>WORKERS · CPU/RAM <span id="dtop-status">○ no stream</span></h2>
+  <div class="body" id="dtop-body"></div>
 </div>
 
-<div class="panel" id="tooltip"></div>
-<div id="legend">TRANSPORT&nbsp;&nbsp;<b>◆</b> LCM&nbsp;&nbsp;·&nbsp;&nbsp;<b>▲</b> ZENOH</div>
-<div id="help">DRAG NODES · HOVER INSPECT · SPACE PAUSE · T TOPICS · M MODULES · D DTOP · F FPS · L THEME</div>
+<div class="bar" id="card"></div>
+
+<div id="help">DRAG canvas to pan · SCROLL zoom · HOVER module for card · CLICK to pin · D workers · L theme</div>
 
 <script type="module">
 import { DimAppFrontend } from "https://esm.sh/gh/jeff-hykin/dim-app@v0.3.0/frontend.js";
 "use strict";
 
-// ------------------------------------------------------------------ theme --
-// Colors come from the shared Science theme (/assets/theme.css) so the viz
-// tracks light/dark. Canvas can't read CSS vars directly, so each token is
-// resolved to a concrete rgb() through a hidden probe and rebuilt on change.
-const __probe = document.createElement("span");
-__probe.style.cssText = "position:absolute;visibility:hidden;pointer-events:none";
-document.body.appendChild(__probe);
-function cssColor(name) {
-  __probe.style.color = `var(${name})`;
-  return getComputedStyle(__probe).color;
-}
-
-let THEME = {};
-let TYPE_COLORS = {}, PKG_COLORS = {}, PALETTE = [];
-
-function buildPalettes() {
-  // message-type → hue, kept semantically close to the old hand-picked palette
-  TYPE_COLORS = {
-    Image: THEME.warn, CompressedImage: THEME.warn, CameraInfo: THEME.warn,
-    PointCloud2: THEME.violet, LaserScan: THEME.violet,
-    OccupancyGrid: THEME.cat[0], Path: THEME.cat[0],
-    Odometry: THEME.info, PoseStamped: THEME.info, Twist: THEME.info,
-    TFMessage: THEME.ok, Bool: THEME.cat[1], String: THEME.cat[1],
-  };
-  PKG_COLORS = {
-    sensor_msgs: THEME.warn, geometry_msgs: THEME.info, nav_msgs: THEME.cat[0],
-    tf2_msgs: THEME.ok, vision_msgs: THEME.violet, std_msgs: THEME.cat[1],
-  };
-  PALETTE = [THEME.info, THEME.warn, THEME.cat[0], THEME.violet, THEME.ok,
-             THEME.cat[1], THEME.cat[2], THEME.cat[3]];
-}
-
-function loadTheme() {
-  THEME = {
-    bg: cssColor("--bg"), card: cssColor("--card"), fg: cssColor("--fg"),
-    mutedFg: cssColor("--muted-fg"), border: cssColor("--border"),
-    gridLine: cssColor("--grid-line"),
-    info: cssColor("--info"), primary: cssColor("--primary"), warn: cssColor("--warn"),
-    ok: cssColor("--ok"), violet: cssColor("--violet"), danger: cssColor("--danger"),
-    cat: [cssColor("--cat-1"), cssColor("--cat-2"), cssColor("--cat-3"), cssColor("--cat-4")],
-  };
-  buildPalettes();
-  for (const n of nodes.values()) n.color = n.kind === "module" ? THEME.info : colorFor(n.id, n.transport);
-  if (gridLayer) buildGrid();
-}
+// ─────────────────────────────────────────────────────────── color mapping ──
+// Node accent colors are chosen as *theme variable names* (e.g. "--warn") and
+// applied inline as `--accent: var(--warn)`, so the browser resolves them live
+// and the whole graph re-themes on light/dark flips with zero JS.
+const TYPE_VARS = {
+  Image: "--warn", CompressedImage: "--warn", CameraInfo: "--warn",
+  PointCloud2: "--violet", LaserScan: "--violet",
+  OccupancyGrid: "--cat-1", Path: "--cat-1",
+  Odometry: "--info", PoseStamped: "--info", Twist: "--info",
+  TFMessage: "--ok", Bool: "--cat-2", String: "--cat-2",
+};
+const PKG_VARS = {
+  sensor_msgs: "--warn", geometry_msgs: "--info", nav_msgs: "--cat-1",
+  tf2_msgs: "--ok", vision_msgs: "--violet", std_msgs: "--cat-2",
+};
+const PALETTE = ["--info", "--warn", "--cat-1", "--violet", "--ok", "--cat-2", "--cat-3", "--cat-4"];
 
 // Split a channel/key into a display base and its message type. LCM channels
 // carry the type after "#" ("/pose#geometry_msgs.PoseStamped"); Zenoh keys carry
@@ -249,805 +253,639 @@ function channelType(channel, transport) {
   }
   return { base: channel, msgType: "" };
 }
-
-function colorFor(channel, transport) {
+function accentVar(channel, transport) {
   const { msgType } = channelType(channel, transport);
   if (msgType) {
     const msg = msgType.split(".").pop();
-    if (TYPE_COLORS[msg]) return TYPE_COLORS[msg];
+    if (TYPE_VARS[msg]) return TYPE_VARS[msg];
     const pkg = msgType.split(".")[0];
-    if (PKG_COLORS[pkg]) return PKG_COLORS[pkg];
+    if (PKG_VARS[pkg]) return PKG_VARS[pkg];
   }
-  if (channel.startsWith("/rpc") || channel.startsWith("rpc")) return THEME.cat[0];
+  if (channel.startsWith("/rpc") || channel.startsWith("rpc")) return "--cat-1";
   const hash = [...channel].reduce((a, c) => a + c.charCodeAt(0), 0);
   return PALETTE[hash % PALETTE.length];
 }
 
-// Accepts "#rrggbb" or an "rgb()/rgba()" string and returns rgba() at alpha `a`.
-function withAlpha(color, a) {
-  if (color[0] === "#") {
-    const n = parseInt(color.slice(1), 16);
-    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
-  }
-  // Modern browsers report `getComputedStyle().color` for oklch tokens back as
-  // an `oklch(L C H)` string — parse those as L/C/H, not R/G/B (otherwise the
-  // hue lands in the blue channel and every blended color turns blue).
-  const p = color.match(/[\d.]+/g);
-  if (!p || p.length < 3) return color;
-  if (color.startsWith("oklch")) return `oklch(${p[0]} ${p[1]} ${p[2]} / ${a})`;
-  return `rgba(${p[0]}, ${p[1]}, ${p[2]}, ${a})`;
-}
-
-// ------------------------------------------------------------------ graph --
-const nodes = new Map();
-const edges = [];
+// ────────────────────────────────────────────────────────────── graph model ─
+const nodes = new Map();          // id -> node
+const edges = [];                 // { from, to, channel, directed, el, lab, active }
 const edgeIndex = new Map();
-const routes = new Map();
-
-function makeNode(id, kind, label, transport) {
-  const { msgType } = channelType(id, transport);
-  return {
-    id, kind, label,
-    x: VW / 2, y: VH / 2, vx: 0, vy: 0,
-    r: kind === "module" ? 14 : 4.5,
-    glow: 0, color: kind === "module" ? THEME.info : colorFor(id, transport),
-    bytes: 0, msgs: 0, fixed: false, placed: false,
-    transport: transport || "", msgType,
-  };
-}
+const routes = new Map();         // topic -> { pubs:Set<moduleId>, subs:Set<moduleId> }
+let dirty = false;                // topology grew → rebuild DOM + relayout
 
 function ensureNode(id, kind, label, transport) {
   let n = nodes.get(id);
-  if (!n) { n = makeNode(id, kind, label, transport); nodes.set(id, n); }
-  else if (transport && !n.transport) { n.transport = transport; n.color = colorFor(id, transport); }
+  if (!n) {
+    n = {
+      id, kind, label,
+      x: 0, y: 0, w: kind === "module" ? 160 : 120, h: kind === "module" ? 40 : 34,
+      vx: 0, vy: 0, placed: false, fixed: false, open: false,
+      transport: transport || "", msgType: channelType(id, transport).msgType,
+      accent: kind === "module" ? "--info" : accentVar(id, transport),
+      el: null, active: 0,
+    };
+    nodes.set(id, n);
+    dirty = true;
+  } else if (transport && !n.transport) {
+    n.transport = transport;
+    n.accent = n.kind === "module" ? "--info" : accentVar(id, transport);
+  }
   return n;
 }
 
 function addEdge(fromId, toId, channel, directed) {
   const key = fromId + "|" + toId;
   let e = edgeIndex.get(key);
-  if (!e) {
-    e = { from: fromId, to: toId, channel, directed, flow: 0 };
-    edges.push(e); edgeIndex.set(key, e);
-  }
+  if (!e) { e = { from: fromId, to: toId, channel, directed, el: null, lab: null, active: 0 }; edges.push(e); edgeIndex.set(key, e); dirty = true; }
   return e;
 }
 
-function applyTopology(topo) {
-  for (const t of topo.edges) {
+// Blueprint stream types come as bare or dotted names ("PointCloud2",
+// "nav_msgs.Odometry"); map them to a theme accent var the same way topic
+// channels are colored.
+function accentForType(type, topicName) {
+  const msg = (type || "").split(".").pop();
+  if (TYPE_VARS[msg]) return TYPE_VARS[msg];
+  const pkg = (type || "").includes(".") ? type.split(".")[0] : "";
+  if (PKG_VARS[pkg]) return PKG_VARS[pkg];
+  const key = topicName || type || "";
+  const hash = [...key].reduce((a, c) => a + c.charCodeAt(0), 0);
+  return PALETTE[hash % PALETTE.length];
+}
+
+// Normalize a live spy channel or a blueprint topic name to a common key so the
+// two can be matched: "/camera_info#sensor_msgs.CameraInfo" and "dimos/cmd_vel/
+// geometry_msgs.Twist" both reduce to their last bare segment ("camera_info").
+function normBase(s) {
+  let b = channelType(s, "").base.replace(/^\/+/, "");
+  const seg = b.split("/");
+  return seg[seg.length - 1];
+}
+const topicBase = new Map();       // normBase(name) -> topic node id
+const moduleInfo = new Map();      // module node id -> blueprint card payload
+
+let currentBlueprint = "";
+function resetGraph() {
+  for (const n of nodes.values()) n.el?.remove();
+  for (const e of edges) { e.el?.remove(); e.lab?.remove(); }
+  nodes.clear(); edges.length = 0; edgeIndex.clear(); routes.clear();
+  topicBase.clear(); moduleInfo.clear();
+  seedCount = 0; settledOnce = false; heat = 0;
+}
+
+// Build the graph from the active blueprint: modules with typed inputs/outputs +
+// docstrings, joined into topics by stream name. A module's `outputs` publish a
+// topic; its `inputs` subscribe. The spy only animates these edges afterward.
+function applyGraph(g) {
+  if (g.blueprint !== currentBlueprint) { resetGraph(); currentBlueprint = g.blueprint; }
+  for (const [mid, info] of Object.entries(g.modules || {})) {
+    const nodeId = "m:" + mid;
+    const mod = ensureNode(nodeId, "module", info.label || mid);
+    moduleInfo.set(nodeId, info);
+  }
+  for (const t of g.edges || []) {
     if (!t.topic || t.topic === "None") continue;
-    const mod = ensureNode("m:" + t.module, "module", t.module);
-    const hub = ensureNode(t.topic, "topic", channelType(t.topic, t.transport).base, t.transport);
-    if (t.transport) hub.transport = t.transport;
-    hub.msgType = (t.type || channelType(t.topic, t.transport).msgType || "").split(".").pop();
-    hub.color = colorFor(t.topic, hub.transport);
+    const modId = "m:" + t.module;
+    if (!nodes.has(modId)) ensureNode(modId, "module", g.modules?.[t.module]?.label || t.module);
+    const hub = ensureNode(t.topic, "topic", t.topic);
+    hub.msgType = (t.type || "").split(".").pop();
+    hub.accent = accentForType(t.type, t.topic);
+    topicBase.set(normBase(t.topic), hub.id);
     let route = routes.get(t.topic);
     if (!route) { route = { pubs: new Set(), subs: new Set() }; routes.set(t.topic, route); }
-    if (t.direction === "out") { route.pubs.add(mod.id); addEdge(mod.id, hub.id, t.topic, true); }
-    else if (t.direction === "in") { route.subs.add(mod.id); addEdge(hub.id, mod.id, t.topic, true); }
-    else { route.subs.add(mod.id); addEdge(mod.id, hub.id, t.topic, false); }
+    if (t.direction === "in") { route.subs.add(modId); addEdge(hub.id, modId, t.topic, true); }
+    else { route.pubs.add(modId); addEdge(modId, hub.id, t.topic, true); }
   }
-  layout();
+  if (dirty) { buildDom(); dirty = false; reheat(1); settleIfFirst(); }
 }
 
-// Play area for the graph. The side panels reserve left/right gutters, but on
-// narrow windows those gutters are shrunk to near-margins so the graph never
-// collapses into a vertical sliver (it spreads full-width and the panels just
-// overlay the top corners). Used by both layout() and stepPhysics().
-function layoutBounds() {
-  const w = VW, h = VH;
-  let left = 300, right = 380;
-  if (w <= 820) { left = 224; right = 252; }
-  if (w <= 620) { left = 28; right = 28; }
-  // never reserve more than 60% of the width — always keep a real band
-  if (left + right > w * 0.6) {
-    const k = (w * 0.6) / (left + right);
-    left *= k; right *= k;
-  }
-  const minX = Math.max(16, left), maxX = w - Math.max(16, right);
-  const minY = 72, maxY = h - 76;
-  return { minX, maxX, minY, maxY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 + 6 };
+// ─────────────────────────────────────────── force-directed layout ──
+// A robotics graph is a mesh of pub/sub relationships, so we lay it out as an
+// organic web: every node repels every other (Coulomb), each edge pulls its two
+// endpoints toward an ideal length (Hooke), and a gentle pull toward the origin
+// keeps the whole thing centered. The sim runs in the animate loop but cools to
+// a resting "heat" of 0, so it settles yet re-warms whenever the user drags a
+// node or the topology grows. Positions live on n.x/n.y (world units, node
+// centers); the HTML nodes and SVG edges both render straight from those.
+const REPULSION = 62000;   // coulomb strength (px² · accel)
+const SPRING_K = 0.045;    // hooke stiffness along edges
+const SPRING_GAP = 96;     // ideal edge length beyond the two node radii
+const CENTER_K = 0.012;    // pull toward origin
+const DAMPING = 0.86;      // velocity retention per tick
+const MAX_STEP = 34;       // clamp per-tick displacement (px)
+let heat = 0;              // sim "temperature"; >0.04 means keep integrating
+let seedCount = 0;
+let settledOnce = false;
+
+function seed(n) {
+  if (n.placed) return;
+  const ang = seedCount * 2.399963;                 // golden angle → even spiral
+  const rad = 30 + 26 * Math.sqrt(seedCount + 1);
+  n.x = Math.cos(ang) * rad;
+  n.y = Math.sin(ang) * rad;
+  n.vx = 0; n.vy = 0; n.placed = true; seedCount++;
 }
+function reheat(amount = 1) { heat = Math.max(heat, amount); }
 
-function layout() {
-  const all = [...nodes.values()].filter((n) => n.kind === "module");
-  const b = layoutBounds();
-  const cx = b.cx, cy = b.cy;
-  const R = Math.max(70, Math.min(b.maxX - b.minX, b.maxY - b.minY) * 0.42);
-  all.sort((a, b) => a.label.localeCompare(b.label));
-  all.forEach((n, i) => {
-    if (n.placed) return;
-    const a = (i / all.length) * Math.PI * 2 - Math.PI / 2;
-    n.x = cx + Math.cos(a) * R;
-    n.y = cy + Math.sin(a) * R * 0.85;
-    n.placed = true;
-  });
-  for (const [topic, route] of routes) {
-    const hub = nodes.get(topic);
-    if (!hub || hub.placed) continue;
-    const attached = [...route.pubs, ...route.subs].map((id) => nodes.get(id)).filter(Boolean);
-    if (attached.length) {
-      hub.x = attached.reduce((s, m) => s + m.x, 0) / attached.length + (Math.random() - 0.5) * 50;
-      hub.y = attached.reduce((s, m) => s + m.y, 0) / attached.length + (Math.random() - 0.5) * 50;
-    } else {
-      const a = Math.random() * Math.PI * 2;
-      hub.x = cx + Math.cos(a) * R * 0.45;
-      hub.y = cy + Math.sin(a) * R * 0.45;
-    }
-    hub.placed = true;
-  }
-  for (let i = 0; i < 260; i++) stepPhysics(1);
-}
-
-// --------------------------------------------------------------- particles --
-const particles = [], shockwaves = [];
-const MAX_PARTICLES = 3000;
-let lastPacketAt = 0;
-
-// Spawn `n` comets along an edge a -> b. The first comet may carry a `relay`
-// payload: when it reaches `b` (the topic hub) it triggers the fan-out to
-// subscribers, so the flow reads as publisher -> topic -> subscribers in
-// causal order rather than the hub radiating in all directions at once.
-function spawnLeg(a, b, color, size, n, relayMeta) {
-  if (!a || !b || particles.length >= MAX_PARTICLES) return;
-  const e = edgeIndex.get(a.id + "|" + b.id);
-  if (e) e.flow = Math.min(1.5, e.flow + 0.4);
-  for (let i = 0; i < n; i++) {
-    particles.push({
-      from: a, to: b, t: -i * 0.1,
-      speed: 1.0 + Math.random() * 0.4 - size * 0.05,
-      size, color, trail: [],
-      relay: i === 0 ? relayMeta : null,
-    });
-  }
-}
-
-// A publisher comet arrived at the topic hub: flash the hub and fan out to
-// every subscriber.
-function fanOut(meta) {
-  const hub = nodes.get(meta.channel);
-  const route = routes.get(meta.channel);
-  if (!hub || !route) return;
-  hub.glow = Math.min(1.9, hub.glow + 0.6);
-  shockwaves.push({ x: hub.x, y: hub.y, r: hub.r + 2, alpha: 0.45, color: meta.color });
-  for (const s of route.subs) spawnLeg(hub, nodes.get(s), meta.color, meta.size, meta.n, null);
-  if (meta.bytes > 1_000_000) {
-    shockwaves.push({ x: hub.x, y: hub.y, r: hub.r + 5, alpha: 0.7, color: meta.color });
-  }
-}
-
-function spawnParticles(channel, count, bytes, transport) {
-  const hub = nodes.get(channel) ?? ensureNode(channel, "topic", channelType(channel, transport).base, transport);
-  if (transport && !hub.transport) { hub.transport = transport; hub.color = colorFor(channel, transport); }
-  if (!hub.placed) layout();
-  hub.bytes += bytes; hub.msgs += count;
-
-  const route = routes.get(channel);
-  const size = Math.max(1.8, Math.min(4.2, Math.log2(1 + bytes / Math.max(1, count)) * 0.32));
-  const color = hub.color;
-  const n = Math.min(count, 8);
-  const meta = { channel, size, color, bytes, n };
-
-  if (route && route.pubs.size) {
-    // publisher -> hub; the relay comet fans out on arrival (see fanOut)
-    for (const p of route.pubs) {
-      const pub = nodes.get(p);
-      if (pub) {
-        pub.glow = Math.min(1.8, pub.glow + 0.45); // the source pulses brightest
-        spawnLeg(pub, hub, color, size, n, meta);
-      }
-    }
-  } else if (route && route.subs.size) {
-    // no known publisher (e.g. external producer): radiate from the hub
-    hub.glow = Math.min(1.6, hub.glow + 0.4);
-    for (const s of route.subs) spawnLeg(hub, nodes.get(s), color, size, n, null);
-    if (bytes > 1_000_000) shockwaves.push({ x: hub.x, y: hub.y, r: hub.r + 5, alpha: 0.7, color });
-  } else {
-    hub.glow = Math.min(1.6, hub.glow + 0.4);
-  }
-}
-
-// ------------------------------------------------------------------ stats --
-let totalMsgs = 0, totalBytes = 0;
-const windowEvents = [];
-const perTopic = new Map();
-const sparkSamples = new Array(150).fill(0);
-let sparkAccum = 0;
-
-function noteTraffic(channel, count, bytes, transport) {
-  totalMsgs += count; totalBytes += bytes; sparkAccum += bytes;
-  lastPacketAt = performance.now();
-  const now = lastPacketAt;
-  windowEvents.push([now, count, bytes]);
-  let t = perTopic.get(channel);
-  if (!t) { t = { msgs: 0, bytes: 0, win: [], transport: transport || "" }; perTopic.set(channel, t); }
-  if (transport && !t.transport) t.transport = transport;
-  t.msgs += count; t.bytes += bytes; t.win.push([now, count, bytes]);
-}
-
-setInterval(() => { sparkSamples.push(sparkAccum * 2); sparkSamples.shift(); sparkAccum = 0; }, 500);
-
-function rollWindow(arr, now) { while (arr.length && now - arr[0][0] > 5000) arr.shift(); }
-
-function human(bytes) {
-  const units = ["B", "KiB", "MiB", "GiB"];
-  let u = 0;
-  while (bytes >= 1024 && u < units.length - 1) { bytes /= 1024; u++; }
-  return bytes.toFixed(u ? 1 : 0) + " " + units[u];
-}
-
-// -------------------------------------------------------------- websocket --
-const connEl = document.getElementById("conn");
-let paused = false, showTopics = true, showModules = true, showFps = false, showDtop = true;
-let dtopData = null, dtopAt = 0;   // per-worker resource stats + last-frame time (folded-in lcm_spy)
-
-// Data arrives over the desktop app-bus from our backend (main.js), which runs
-// the @dimos/lcm sniff + run-log topology parse and forwards {kind,...} frames —
-// the same shapes the original lcmflow WebSocket sent.
-let __lastMsg = 0;
-const __dimApp = new DimAppFrontend();
-__dimApp.receiveRequest((tag, msg) => {
-  if (tag !== "lcmflow" || !msg) return;
-  __lastMsg = Date.now();
-  connEl.textContent = "▮ LIVE"; connEl.className = "live";
-  if (msg.kind === "topology") applyTopology(msg);
-  else if (msg.kind === "dtop") { dtopData = msg.data; dtopAt = Date.now(); }
-  else if (msg.kind === "packets") {
-    for (const ev of msg.events) {
-      // events are [transport, channel, count, bytes]
-      const [transport, channel, count, bytes] = ev;
-      noteTraffic(channel, count, bytes, transport);
-      if (!paused) spawnParticles(channel, count, bytes, transport);
-    }
-  }
-});
-setInterval(() => {
-  if (Date.now() - __lastMsg > 4000) { connEl.textContent = "○ WAITING FOR RUN"; connEl.className = ""; }
-}, 1000);
-__dimApp.send("hello");
-
-// debug handle (console poking / offline rendering checks)
-globalThis.__lcmflow = { applyTopology, noteTraffic, spawnParticles };
-
-// ---------------------------------------------------------------- physics --
-function stepPhysics(dt) {
+function stepForces() {
   const ns = [...nodes.values()];
-  const b = layoutBounds();
-  const cx = b.cx, cy = b.cy;
+  for (const n of ns) { n.fx = 0; n.fy = 0; }
+  // all-pairs repulsion with a collision cushion (nodes have real box sizes)
   for (let i = 0; i < ns.length; i++) {
     const a = ns[i];
-    if (a.fixed) continue;
-    let fx = (cx - a.x) * 0.013, fy = (cy - a.y) * 0.013;
-    for (let j = 0; j < ns.length; j++) {
-      if (i === j) continue;
+    for (let j = i + 1; j < ns.length; j++) {
       const b = ns[j];
-      const dx = a.x - b.x, dy = a.y - b.y;
-      const d2 = dx * dx + dy * dy + 60;
-      const rep = (a.kind === "module" && b.kind === "module" ? 26000 : 5200) / d2;
-      const d = Math.sqrt(d2);
-      fx += (dx / d) * rep; fy += (dy / d) * rep;
+      let dx = a.x - b.x, dy = a.y - b.y;
+      let d2 = dx * dx + dy * dy;
+      if (d2 < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = dx * dx + dy * dy + 0.01; }
+      const dist = Math.sqrt(d2);
+      const ux = dx / dist, uy = dy / dist;
+      let f = REPULSION / d2;
+      const minDist = a.r + b.r + 22;
+      if (dist < minDist) f += (minDist - dist) * 1.1;   // firm push out of overlap
+      a.fx += ux * f; a.fy += uy * f;
+      b.fx -= ux * f; b.fy -= uy * f;
     }
-    a.vx = (a.vx + fx * dt) * 0.84;
-    a.vy = (a.vy + fy * dt) * 0.84;
   }
+  // spring attraction along every edge
   for (const e of edges) {
     const a = nodes.get(e.from), b = nodes.get(e.to);
+    if (!a || !b) continue;
     const dx = b.x - a.x, dy = b.y - a.y;
-    const d = Math.hypot(dx, dy) || 1;
-    const f = (d - 140) * 0.004;
-    const fx = (dx / d) * f, fy = (dy / d) * f;
-    if (!a.fixed) { a.vx += fx; a.vy += fy; }
-    if (!b.fixed) { b.vx -= fx; b.vy -= fy; }
+    const dist = Math.hypot(dx, dy) || 1;
+    const ideal = SPRING_GAP + a.r + b.r;
+    const f = SPRING_K * (dist - ideal);
+    const ux = dx / dist, uy = dy / dist;
+    a.fx += ux * f; a.fy += uy * f;
+    b.fx -= ux * f; b.fy -= uy * f;
   }
+  // centering + integrate (fixed nodes are pinned by the dragger)
   for (const n of ns) {
-    if (n.fixed) continue;
-    n.x += n.vx; n.y += n.vy;
-    n.x = Math.max(b.minX, Math.min(b.maxX, n.x));
-    n.y = Math.max(b.minY, Math.min(b.maxY, n.y));
+    if (n.fixed) { n.vx = 0; n.vy = 0; continue; }
+    n.fx += -n.x * CENTER_K;
+    n.fy += -n.y * CENTER_K;
+    n.vx = (n.vx + n.fx) * DAMPING;
+    n.vy = (n.vy + n.fy) * DAMPING;
+    let sx = n.vx * heat, sy = n.vy * heat;
+    const step = Math.hypot(sx, sy);
+    if (step > MAX_STEP) { sx = sx / step * MAX_STEP; sy = sy / step * MAX_STEP; }
+    n.x += sx; n.y += sy;
   }
 }
 
-// ----------------------------------------------------------------- canvas --
-const canvas = document.getElementById("view");
-const ctx = canvas.getContext("2d");
-let dpr = 1;
-let gridLayer = null;
-// Canvas viewport size in CSS px. Equals the window when the canvas is full-
-// bleed (wide layout) but is smaller when the canvas becomes a flow element in
-// the stacked narrow layout — so all drawing/physics uses these, not the window.
-let VW = innerWidth, VH = innerHeight;
+// On the very first topology, pre-settle synchronously so nodes don't visibly
+// fly out from the center, then frame the result. Later growth just re-warms.
+function settleIfFirst() {
+  if (settledOnce || !nodes.size) return;
+  settledOnce = true;
+  heat = 1;
+  for (let i = 0; i < 320; i++) stepForces();
+  heat = 0.1;
+  positionAll();
+  fitView();
+}
 
-function buildGrid() {
-  gridLayer = document.createElement("canvas");
-  gridLayer.width = VW * dpr;
-  gridLayer.height = VH * dpr;
-  const g = gridLayer.getContext("2d");
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  // dot lattice
-  g.fillStyle = THEME.gridLine;
-  for (let x = 14; x < VW; x += 28) {
-    for (let y = 14; y < VH; y += 28) g.fillRect(x, y, 1, 1);
+// ───────────────────────────────────────────────────────────────── the DOM ──
+const flow = document.getElementById("flow");
+const viewport = document.getElementById("viewport");
+const svg = document.getElementById("edges");
+const defs = svg.querySelector("defs");
+const hintEl = document.getElementById("hint");
+let view = { x: 0, y: 0, k: 1 };   // pan (x,y) + zoom (k)
+
+defs.innerHTML = `
+  <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+    <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+  </marker>`;
+
+function isOrphan(topicId) {
+  const r = routes.get(topicId);
+  return !!(r && r.pubs.size > 0 && r.subs.size === 0);
+}
+
+function buildDom() {
+  for (const n of nodes.values()) {
+    if (n.el) continue;
+    const el = document.createElement("div");
+    el.className = "node " + n.kind;
+    el.style.setProperty("--accent", `var(${n.accent})`);
+    el.dataset.id = n.id;
+    if (n.kind === "module") {
+      el.innerHTML =
+        `<div class="head"><span class="kind">MOD</span>` +
+        `<span class="name"></span><span class="rate"></span><span class="chev">▶</span></div>` +
+        `<div class="body"></div>` +
+        `<span class="handle l"></span><span class="handle r"></span>`;
+      el.querySelector(".name").textContent = n.label;
+    } else {
+      if (isOrphan(n.id)) el.classList.add("orphan");
+      el.innerHTML =
+        `<span class="name"></span><span class="type"></span>` +
+        `<span class="handle l"></span><span class="handle r"></span>`;
+      el.querySelector(".name").textContent = n.label;
+      el.querySelector(".type").textContent = n.msgType || (n.transport || "").toUpperCase() || "";
+    }
+    viewport.appendChild(el);
+    n.el = el;
+    n.w = el.offsetWidth; n.h = el.offsetHeight;  // layout px == world units
+    n.r = 0.5 * Math.hypot(n.w, n.h);             // repulsion/collision radius
+    seed(n);
   }
-  const cx = VW / 2, cy = VH / 2 + 10;
-  g.strokeStyle = withAlpha(THEME.info, 0.06);
-  g.lineWidth = 1;
-  for (const r of [170, 340, 510]) {
-    g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.stroke();
-  }
-  return gridLayer;
-}
-
-function resize() {
-  dpr = Math.min(devicePixelRatio || 1, 3);
-  // Overlay (wide): the canvas is position:fixed; a replaced element won't
-  // stretch to inset:0 on its own, so size it to the window explicitly.
-  // Stacked (narrow): CSS sizes the box (width:100%, height:68vh) — clear any
-  // inline size and measure it so CSS keeps control across resizes.
-  if (getComputedStyle(canvas).position === "fixed") {
-    VW = innerWidth;
-    VH = innerHeight;
-    canvas.style.width = VW + "px";
-    canvas.style.height = VH + "px";
-  } else {
-    canvas.style.width = "";
-    canvas.style.height = "";
-    const rect = canvas.getBoundingClientRect();
-    VW = Math.max(1, Math.round(rect.width));
-    VH = Math.max(1, Math.round(rect.height));
-  }
-  canvas.width = VW * dpr;
-  canvas.height = VH * dpr;
-  buildGrid();
-}
-// Follow OS light/dark and re-resolve canvas tokens on any theme flip. Order
-// matters: apply the OS `dark` class and attach the observer BEFORE the first
-// loadTheme(), otherwise the canvas resolves the light palette while the CSS
-// panels already went dark (split-theme bug).
-new MutationObserver(loadTheme).observe(document.body, { attributes: true, attributeFilter: ["class"] });
-(function () {
-  const mq = matchMedia("(prefers-color-scheme: light)");
-  const apply = () => document.body.classList.toggle("dark", !mq.matches);
-  apply();
-  mq.addEventListener("change", apply);
-})();
-loadTheme();
-
-addEventListener("resize", resize);
-resize();
-
-function bezierPt(a, b, t, bow = 0.08) {
-  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-  const cx = mx - (b.y - a.y) * bow, cy = my + (b.x - a.x) * bow;
-  const u = 1 - t;
-  return { x: u * u * a.x + 2 * u * t * cx + t * t * b.x,
-           y: u * u * a.y + 2 * u * t * cy + t * t * b.y };
-}
-
-function strokeCurve(a, b) {
-  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-  ctx.beginPath();
-  ctx.moveTo(a.x, a.y);
-  ctx.quadraticCurveTo(mx - (b.y - a.y) * 0.08, my + (b.x - a.x) * 0.08, b.x, b.y);
-  ctx.stroke();
-}
-
-function polygon(x, y, r, sides, rot) {
-  ctx.beginPath();
-  for (let k = 0; k <= sides; k++) {
-    const a = (k / sides) * Math.PI * 2 + rot;
-    k ? ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r)
-      : ctx.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
-  }
-}
-
-// Crisp label with dark halo so it stays readable over strands.
-function label(text, x, y, font, color, align = "center") {
-  ctx.font = font;
-  ctx.textAlign = align;
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = withAlpha(THEME.bg, 0.85);
-  ctx.strokeText(text, x, y);
-  ctx.fillStyle = color;
-  ctx.fillText(text, x, y);
-}
-
-let lastFrame = performance.now(), fps = 60, hovered = null, focusIds = null;
-let dashOffset = 0;
-
-function frame(now) {
-  requestAnimationFrame(frame);
-  const dt = Math.min(0.05, (now - lastFrame) / 1000);
-  fps = fps * 0.95 + (1 / Math.max(dt, 1e-3)) * 0.05;
-  lastFrame = now;
-  if (!paused) { stepPhysics(dt * 60); dashOffset -= dt * 30; }
-
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, VW, VH);
-  ctx.fillStyle = THEME.bg;
-  ctx.fillRect(0, 0, VW, VH);
-  ctx.drawImage(gridLayer, 0, 0, VW, VH);
-
-  // ---- edges: graphite hairlines; active edges carry colored dash flow
   for (const e of edges) {
-    const a = nodes.get(e.from), b = nodes.get(e.to);
-    if (!paused) e.flow *= Math.pow(0.3, dt);
-    const hub = a.kind === "topic" ? a : b;
-    const hot = Math.min(1, e.flow + hub.glow * 0.25);
-    const isHover = hovered && (e.from === hovered.id || e.to === hovered.id);
-    ctx.globalAlpha = focusIds && !isHover ? 0.12 : 1; // dim non-focused edges
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = withAlpha(THEME.primary, isHover ? 0.6 : 0.18);
-    strokeCurve(a, b);
-    if (hot > 0.03 || isHover) {
-      ctx.strokeStyle = withAlpha(hub.color, Math.min(0.9, 0.15 + hot * 0.7 + (isHover ? 0.3 : 0)));
-      ctx.lineWidth = 2;
-      ctx.setLineDash([3, 9]);
-      ctx.lineDashOffset = e.directed ? dashOffset : 0;
-      strokeCurve(a, b);
-      ctx.setLineDash([]);
-    }
-    ctx.globalAlpha = 1;
+    if (e.el) continue;
+    const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    p.setAttribute("stroke", "var(--border)");
+    p.setAttribute("stroke-width", "1.5");
+    if (e.directed) p.setAttribute("marker-end", "url(#arrow)");
+    svg.appendChild(p);
+    e.el = p;
+    const lab = document.createElement("div");
+    lab.className = "elabel";
+    lab.style.setProperty("--accent", accentColor(e));
+    viewport.appendChild(lab);
+    e.lab = lab;
   }
-
-  // ---- particles: tracers with thin tails
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i];
-    if (!paused) p.t += dt * p.speed;
-    if (p.t >= 1) {
-      // arrival: publisher comet fans out at the hub; subscriber comet
-      // pulses the module that just received the message.
-      if (p.relay) fanOut(p.relay);
-      else if (p.to && p.to.kind === "module") p.to.glow = Math.min(1.4, p.to.glow + 0.3);
-      particles.splice(i, 1);
-      continue;
-    }
-    if (p.t < 0) continue;
-    const pos = bezierPt(p.from, p.to, p.t);
-    p.trail.push(pos);
-    if (p.trail.length > 6) p.trail.shift();
-    if (p.trail.length > 1) {
-      for (let k = 1; k < p.trail.length; k++) {
-        ctx.strokeStyle = withAlpha(p.color, 0.5 * (k / p.trail.length));
-        ctx.lineWidth = Math.max(0.6, p.size * 0.5 * (k / p.trail.length));
-        ctx.beginPath();
-        ctx.moveTo(p.trail[k - 1].x, p.trail[k - 1].y);
-        ctx.lineTo(p.trail[k].x, p.trail[k].y);
-        ctx.stroke();
-      }
-    }
-    ctx.shadowColor = p.color;
-    ctx.shadowBlur = 7;
-    ctx.fillStyle = p.color;
-    ctx.beginPath();
-    ctx.arc(pos.x, pos.y, p.size, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-  }
-
-  // ---- shockwaves: single hairline rings
-  for (let i = shockwaves.length - 1; i >= 0; i--) {
-    const s = shockwaves[i];
-    if (!paused) { s.r += 120 * dt; s.alpha -= 1.1 * dt; }
-    if (s.alpha <= 0) { shockwaves.splice(i, 1); continue; }
-    ctx.strokeStyle = withAlpha(s.color, s.alpha * 0.55);
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.stroke();
-  }
-
-  // ---- topic nodes: small squares + always-on small labels
-  for (const n of nodes.values()) {
-    if (n.kind !== "topic") continue;
-    if (!paused) n.glow *= Math.pow(0.25, dt);
-    const isHover = hovered === n;
-    ctx.globalAlpha = focusIds && !focusIds.has(n.id) ? 0.2 : 1;
-    const route = routes.get(n.id);
-    // Published but consumed by no module in this blueprint: dangling stream.
-    const orphan = route && route.pubs.size > 0 && route.subs.size === 0;
-    const r = n.r + Math.min(2.5, n.glow * 2) + (isHover ? 1.5 : 0);
-    if (n.glow > 0.02) {
-      ctx.shadowColor = n.color; ctx.shadowBlur = 9;
-    }
-    // shape encodes transport: Zenoh = triangle, LCM (and unknown) = diamond
-    const sides = n.transport === "zenoh" ? 3 : 4;
-    const angle = n.transport === "zenoh" ? -Math.PI / 2 : Math.PI / 4;
-    ctx.strokeStyle = withAlpha(n.color, 0.45 + Math.min(0.55, n.glow * 0.7) + (isHover ? 0.3 : 0));
-    ctx.lineWidth = 1.7;
-    if (orphan) ctx.setLineDash([2.5, 2.5]);
-    polygon(n.x, n.y, r, sides, angle);
-    ctx.stroke();
-    if (orphan) {
-      ctx.setLineDash([]);
-      if (n.glow > 0.05) {
-        ctx.strokeStyle = withAlpha(THEME.warn, Math.min(0.5, n.glow * 0.4));
-        polygon(n.x, n.y, r + 3.5, sides, angle);
-        ctx.stroke();
-      }
-    }
-    ctx.fillStyle = withAlpha(n.color, 0.25 + Math.min(0.75, n.glow));
-    ctx.fillRect(n.x - 1.5, n.y - 1.5, 3, 3);
-    ctx.shadowBlur = 0;
-    label(n.label, n.x, n.y - r - 5, "9.5px ui-monospace, monospace",
-          isHover ? THEME.fg : withAlpha(THEME.mutedFg, 0.62 + Math.min(0.38, n.glow)));
-    ctx.globalAlpha = 1;
-  }
-
-  // ---- module nodes: hex outline, core, clean uppercase label
-  // When a topic is hovered, its single publisher is tagged SOURCE.
-  const hoveredRoute = hovered && hovered.kind === "topic" ? routes.get(hovered.id) : null;
-  for (const n of nodes.values()) {
-    if (n.kind !== "module") continue;
-    if (!paused) n.glow *= Math.pow(0.25, dt);
-    const isHover = hovered === n;
-    ctx.globalAlpha = focusIds && !focusIds.has(n.id) ? 0.2 : 1;
-    const isSource = hoveredRoute && hoveredRoute.pubs.has(n.id);
-    const r = n.r + (isHover ? 1.5 : 0);
-    ctx.strokeStyle = withAlpha(THEME.info, 0.8);
-    ctx.lineWidth = 1.9;
-    polygon(n.x, n.y, r, 6, Math.PI / 6);
-    ctx.stroke();
-    if (n.glow > 0.03) {
-      ctx.strokeStyle = withAlpha(THEME.info, Math.min(0.5, n.glow * 0.5));
-      ctx.lineWidth = 1;
-      polygon(n.x, n.y, r + 3.5, 6, Math.PI / 6);
-      ctx.stroke();
-    }
-    ctx.shadowColor = THEME.info; ctx.shadowBlur = isHover ? 10 : 6;
-    ctx.fillStyle = withAlpha(THEME.info, 0.9);
-    ctx.beginPath(); ctx.arc(n.x, n.y, 3, 0, Math.PI * 2); ctx.fill();
-    ctx.shadowBlur = 0;
-    label(n.label, n.x, n.y + r + 14, "600 10px ui-monospace, monospace",
-          isHover ? THEME.info : THEME.fg);
-    if (isSource) {
-      label("◆ SOURCE", n.x, n.y - r - 8, "700 9px ui-monospace, monospace", THEME.warn);
-    }
-    ctx.globalAlpha = 1;
-  }
-
-  drawSpark();
-  updateHud(now);
-}
-requestAnimationFrame(frame);
-
-// --------------------------------------------------------------- sparkline --
-const sparkEl = document.getElementById("spark");
-const sparkCtx = sparkEl.getContext("2d");
-sparkCtx.scale(2, 2);
-
-function drawSpark() {
-  const w = 300, h = 34;
-  sparkCtx.clearRect(0, 0, w, h);
-  const max = Math.max(...sparkSamples, 1);
-  sparkCtx.strokeStyle = withAlpha(THEME.mutedFg, 0.18);
-  sparkCtx.lineWidth = 1;
-  for (const f of [0.25, 0.5, 0.75]) {
-    sparkCtx.beginPath();
-    sparkCtx.moveTo(0, h * f); sparkCtx.lineTo(w, h * f);
-    sparkCtx.stroke();
-  }
-  sparkCtx.beginPath();
-  sparkSamples.forEach((v, i) => {
-    const x = (i / (sparkSamples.length - 1)) * w, y = h - 2 - (v / max) * (h - 6);
-    i ? sparkCtx.lineTo(x, y) : sparkCtx.moveTo(x, y);
-  });
-  sparkCtx.strokeStyle = THEME.info;
-  sparkCtx.lineWidth = 1;
-  sparkCtx.stroke();
+  positionAll();
+  hintEl.classList.toggle("hide", nodes.size > 0);
 }
 
-// -------------------------------------------------------------------- hud --
-const els = {
-  graph: document.getElementById("r-graph"),
-  rate: document.getElementById("r-rate"),
-  total: document.getElementById("r-total"),
-  fps: document.getElementById("r-fps"),
-  idle: document.getElementById("idle"),
-  clock: document.getElementById("clock"),
-  spark: document.getElementById("r-spark"),
-  modlist: document.getElementById("modlist"),
-  topiclist: document.getElementById("topiclist"),
-  modcount: document.getElementById("modcount"),
-  topcount: document.getElementById("topcount"),
-  modules: document.getElementById("modules"),
-  topics: document.getElementById("topics"),
-  tooltip: document.getElementById("tooltip"),
-  dtop: document.getElementById("dtop"),
-  dtopcount: document.getElementById("dtopcount"),
-  dtoplist: document.getElementById("dtoplist"),
-  dtopStatus: document.getElementById("dtop-status"),
-};
-let lastHud = 0;
+function hubOf(e) { const a = nodes.get(e.from); return a.kind === "topic" ? a : nodes.get(e.to); }
+function accentColor(e) { return `var(${hubOf(e).accent})`; }
 
-function topicWindowStats(pnow) {
-  const out = new Map();
+// Direct edges: a border-to-border line with a slight quadratic bow. The bow
+// keeps a↔b pairs (a pub and a sub on the same channel) from stacking on top of
+// each other and gives the web an organic feel rather than hard chords.
+function borderPoint(n, ux, uy) {
+  const hw = n.w / 2 + 2, hh = n.h / 2 + 2;
+  const tx = Math.abs(ux) > 1e-6 ? hw / Math.abs(ux) : Infinity;
+  const ty = Math.abs(uy) > 1e-6 ? hh / Math.abs(uy) : Infinity;
+  const t = Math.min(tx, ty);
+  return { x: n.x + ux * t, y: n.y + uy * t };
+}
+function edgeGeom(e) {
+  const a = nodes.get(e.from), b = nodes.get(e.to);
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  const ux = dx / dist, uy = dy / dist;
+  const pa = borderPoint(a, ux, uy);
+  const pb = borderPoint(b, -ux, -uy);
+  const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
+  const bow = Math.min(26, dist * 0.13);
+  const cx = mx - uy * bow, cy = my + ux * bow;    // offset along the edge normal
+  return {
+    d: `M ${pa.x.toFixed(1)} ${pa.y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${pb.x.toFixed(1)} ${pb.y.toFixed(1)}`,
+    mid: { x: cx, y: cy },
+  };
+}
+function positionNode(n) {
+  if (!n.el) return;
+  n.el.style.left = (n.x - n.w / 2) + "px";
+  n.el.style.top = (n.y - n.h / 2) + "px";
+}
+function positionEdge(e) {
+  if (!e.el) return;
+  const g = edgeGeom(e);
+  e.el.setAttribute("d", g.d);
+  if (e.lab) { e.lab.style.left = g.mid.x + "px"; e.lab.style.top = g.mid.y + "px"; }
+}
+function positionAll() { for (const n of nodes.values()) positionNode(n); for (const e of edges) positionEdge(e); sizeSvg(); }
+function edgesOf(n) { return edges.filter((e) => e.from === n.id || e.to === n.id); }
+
+function sizeSvg() {
+  let minX = 0, minY = 0, maxX = 0, maxY = 0;
+  for (const n of nodes.values()) {
+    minX = Math.min(minX, n.x - n.w); minY = Math.min(minY, n.y - n.h);
+    maxX = Math.max(maxX, n.x + n.w); maxY = Math.max(maxY, n.y + n.h);
+  }
+  const w = Math.max(1, maxX - minX), h = Math.max(1, maxY - minY);
+  svg.setAttribute("viewBox", `${minX} ${minY} ${w} ${h}`);
+  svg.setAttribute("width", w); svg.setAttribute("height", h);
+  svg.style.left = minX + "px"; svg.style.top = minY + "px";
+}
+
+// ───────────────────────────────────────────────────────────── pan / zoom ──
+function applyView() {
+  viewport.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`;
+  const s = 22 * view.k;
+  flow.style.backgroundSize = `${s}px ${s}px`;
+  flow.style.backgroundPosition = `${view.x}px ${view.y}px`;
+}
+function fitView() {
+  if (!nodes.size) return;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const n of nodes.values()) {
+    minX = Math.min(minX, n.x - n.w / 2); minY = Math.min(minY, n.y - n.h / 2);
+    maxX = Math.max(maxX, n.x + n.w / 2); maxY = Math.max(maxY, n.y + n.h / 2);
+  }
+  const pad = 80, w = maxX - minX + pad * 2, h = maxY - minY + pad * 2;
+  view.k = Math.max(0.2, Math.min(1.4, Math.min(innerWidth / w, innerHeight / h)));
+  view.x = (innerWidth - (minX + maxX) * view.k) / 2;
+  view.y = (innerHeight - (minY + maxY) * view.k) / 2;
+  applyView();
+}
+function zoomAt(sx, sy, factor) {
+  const k2 = Math.max(0.2, Math.min(2.5, view.k * factor));
+  const wx = (sx - view.x) / view.k, wy = (sy - view.y) / view.k;
+  view.k = k2; view.x = sx - wx * k2; view.y = sy - wy * k2;
+  applyView();
+}
+flow.addEventListener("wheel", (ev) => { ev.preventDefault(); zoomAt(ev.clientX, ev.clientY, ev.deltaY < 0 ? 1.1 : 1 / 1.1); }, { passive: false });
+document.getElementById("zin").onclick = () => zoomAt(innerWidth / 2, innerHeight / 2, 1.2);
+document.getElementById("zout").onclick = () => zoomAt(innerWidth / 2, innerHeight / 2, 1 / 1.2);
+document.getElementById("fit").onclick = fitView;
+
+// ─────────────────────────────────────────────────────── drag: pan & nodes ──
+let panning = null, dragNode = null, moved = false;
+flow.addEventListener("mousedown", (ev) => {
+  const nodeEl = ev.target.closest(".node");
+  moved = false;
+  if (nodeEl) {
+    const n = nodes.get(nodeEl.dataset.id);
+    dragNode = { n, sx: ev.clientX, sy: ev.clientY, ox: n.x, oy: n.y };
+    n.fixed = true;
+    reheat(0.7);
+  } else {
+    panning = { sx: ev.clientX, sy: ev.clientY, ox: view.x, oy: view.y };
+    flow.classList.add("grabbing");
+  }
+});
+addEventListener("mousemove", (ev) => {
+  if (dragNode) {
+    const dx = ev.clientX - dragNode.sx, dy = ev.clientY - dragNode.sy;
+    if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+    dragNode.n.x = dragNode.ox + dx / view.k;
+    dragNode.n.y = dragNode.oy + dy / view.k;
+    reheat(0.5);
+    positionNode(dragNode.n);
+    for (const e of edgesOf(dragNode.n)) positionEdge(e);
+    sizeSvg();
+    return;
+  }
+  if (panning) {
+    if (Math.abs(ev.clientX - panning.sx) + Math.abs(ev.clientY - panning.sy) > 3) moved = true;
+    view.x = panning.ox + (ev.clientX - panning.sx);
+    view.y = panning.oy + (ev.clientY - panning.sy);
+    applyView();
+    return;
+  }
+  const nodeEl = ev.target.closest(".node");
+  setHover(nodeEl ? nodes.get(nodeEl.dataset.id) : null);
+});
+addEventListener("mouseup", () => {
+  if (dragNode) {
+    dragNode.n.fixed = false;
+    reheat(0.6);
+    if (!moved) toggleCardPin(dragNode.n);   // a click (no drag) pins the module card
+    dragNode = null;
+  }
+  panning = null; flow.classList.remove("grabbing");
+});
+
+// ────────────────────────────────────────────────────── hover & expand ──
+let hovered = null;
+function setHover(n) {
+  if (n === hovered) return;
+  hovered = n;
+  const focus = new Set();
+  if (n) { focus.add(n.id); for (const e of edgesOf(n)) { focus.add(e.from); focus.add(e.to); } }
+  for (const node of nodes.values()) {
+    node.el.classList.toggle("dim", !!n && !focus.has(node.id));
+    node.el.classList.toggle("hi", node === n);
+  }
+  refreshEdges();
+  if (n && n.kind === "module") showCard(n);
+  else if (!n) hideCard();
+}
+// ── module card: a launcher-style detail popover ──
+// Built from the blueprint's per-module metadata (docstring, typed inputs/outputs,
+// skills, rpcs) with live Hz merged in. Shown on hover; a click pins it open.
+const cardEl = document.getElementById("card");
+let cardNode = null, cardPinned = false;
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+function moduleCardHtml(n) {
+  const info = moduleInfo.get(n.id);
+  const label = info?.label || n.label;
+  const head = `<div class="chd"><span class="badge">MOD</span><span class="nm">${escapeHtml(label)}</span>` +
+    `<span class="pin">${cardPinned && cardNode === n ? "📌" : ""}</span></div>`;
+  if (!info) return head + `<div class="cbody"><span class="none">no blueprint metadata</span></div>`;
+  const stats = topicWindowStats();
+  const rate = (name) => { const s = stats.get(name); return s && s.hz > 0.05 ? `<span class="rt">${s.hz.toFixed(1)}Hz</span>` : ""; };
+  const chips = (arr, cls) => arr.length
+    ? `<div class="chips">` + arr.map((s) =>
+        `<span class="chip ${cls}">${escapeHtml(s.name)}<span class="ty">: ${escapeHtml((s.type || "?").split(".").pop())}</span>${rate(s.name)}</span>`).join("") + `</div>`
+    : `<span class="none">none</span>`;
+  const methods = (arr) => arr.length
+    ? arr.map((f) => `<div class="mrow">${escapeHtml(f.name)}(${(f.params || []).map((p) => escapeHtml(p.name)).join(", ")})` +
+        `${f.return_type ? `<span class="ret"> → ${escapeHtml(f.return_type)}</span>` : ""}</div>`).join("")
+    : `<span class="none">none</span>`;
+  return head + `<div class="cbody">` +
+    (info.doc ? `<div class="doc">${escapeHtml(info.doc)}</div>` : "") +
+    `<div class="sec"><span class="lbl">Publishes ${info.outputs.length}</span>${chips(info.outputs, "out")}</div>` +
+    `<div class="sec"><span class="lbl">Subscribes ${info.inputs.length}</span>${chips(info.inputs, "in")}</div>` +
+    (info.skills.length ? `<div class="sec"><span class="lbl">Skills</span>${methods(info.skills)}</div>` : "") +
+    (info.rpcs.length ? `<div class="sec"><span class="lbl">RPCs</span>${methods(info.rpcs)}</div>` : "") +
+    `</div>`;
+}
+function positionCard(n) {
+  const r = n.el.getBoundingClientRect();
+  const cw = 300, gap = 12;
+  let left = r.right + gap;
+  if (left + cw > innerWidth - 8) left = r.left - cw - gap;
+  if (left < 8) left = 8;
+  const ch = cardEl.offsetHeight || 220;
+  let top = Math.max(8, Math.min(r.top, innerHeight - 8 - ch));
+  cardEl.style.left = left + "px";
+  cardEl.style.top = top + "px";
+}
+function showCard(n) {
+  if (n.kind !== "module") return;
+  cardNode = n;
+  cardEl.innerHTML = moduleCardHtml(n);
+  cardEl.classList.add("show");
+  cardEl.classList.toggle("pinned", cardPinned);
+  positionCard(n);
+}
+function hideCard() {
+  if (cardPinned) return;
+  cardNode = null;
+  cardEl.classList.remove("show");
+}
+function toggleCardPin(n) {
+  if (n.kind !== "module") return;
+  if (cardPinned && cardNode === n) { cardPinned = false; cardNode = null; cardEl.classList.remove("show", "pinned"); return; }
+  cardPinned = true;
+  showCard(n);
+}
+// keep the card off the cursor's way but let it scroll; hovering the card holds it
+cardEl.addEventListener("mouseenter", () => { if (cardNode) hovered = cardNode; });
+
+// ─────────────────────────────────────────────────────────────── live data ──
+const perTopic = new Map();
+let totalMsgs = 0, totalBytes = 0, lastPacketAt = 0;
+const windowEvents = [];
+function noteTraffic(channel, count, bytes, transport) {
+  totalMsgs += count; totalBytes += bytes; lastPacketAt = performance.now();
+  windowEvents.push([lastPacketAt, count, bytes]);
+  let t = perTopic.get(channel);
+  if (!t) { t = { win: [], transport: transport || "" }; perTopic.set(channel, t); }
+  if (transport && !t.transport) t.transport = transport;
+  t.win.push([lastPacketAt, count, bytes]);
+  const hub = nodes.get(channel);
+  if (hub) { hub.active = 1; for (const e of edgesOf(hub)) e.active = 1; }
+}
+function rollWindow(arr, now) { while (arr.length && now - arr[0][0] > 5000) arr.shift(); }
+function topicWindowStats() {
+  const now = performance.now(), out = new Map();
   for (const [ch, t] of perTopic) {
-    rollWindow(t.win, pnow);
+    rollWindow(t.win, now);
     let m = 0, b = 0;
     for (const [, c, bb] of t.win) { m += c; b += bb; }
-    out.set(ch, { hz: m / 5, bps: b / 5, total: t.bytes });
+    out.set(ch, { hz: m / 5, bps: b / 5 });
   }
   return out;
 }
-
-function updateHud(now) {
-  if (now - lastHud < 300) return;
-  lastHud = now;
-  const pnow = performance.now();
-  rollWindow(windowEvents, pnow);
-  let wMsgs = 0, wBytes = 0;
-  for (const [, c, b] of windowEvents) { wMsgs += c; wBytes += b; }
-  const mods = [...nodes.values()].filter((n) => n.kind === "module");
-  const tops = [...nodes.values()].filter((n) => n.kind === "topic");
-
-  els.graph.innerHTML = `<b>${mods.length}</b> MOD · <b>${tops.length}</b> TOP` +
-    (paused ? ' · <b style="color:var(--warn)">⏸ PAUSED</b>' : "");
-  els.rate.innerHTML = `<b>${(wMsgs / 5).toFixed(1)}</b> Hz · <b>${human(wBytes / 5)}</b>/s`;
-  els.total.innerHTML = `Σ <b>${totalMsgs.toLocaleString()}</b> · <b>${human(totalBytes)}</b>`;
-  els.clock.textContent = new Date().toISOString().slice(11, 19) + " UTC";
-  els.fps.style.display = showFps ? "" : "none";
-  if (showFps) els.fps.innerHTML = `<b>${fps.toFixed(0)}</b> FPS · <b>${particles.length}</b> PTC`;
-  els.spark.innerHTML = `<b>${human(wBytes / 5)}</b>/s`;
-
-  const idleFor = lastPacketAt ? (pnow - lastPacketAt) / 1000 : Infinity;
-  els.idle.style.display = idleFor > 3 ? "" : "none";
-  els.idle.textContent = lastPacketAt
-    ? `▲ BUS IDLE ${Math.floor(idleFor)}s`
-    : "▲ NO TRAFFIC — is a stack running?";
-
-  const stats = topicWindowStats(pnow);
-
-  els.modules.style.display = showModules ? "" : "none";
-  els.modcount.textContent = mods.length;
-  if (showModules) {
-    const perModule = new Map(mods.map((m) => [m.id, { hz: 0, bps: 0 }]));
-    for (const [topic, route] of routes) {
-      const s = stats.get(topic);
-      if (!s) continue;
-      for (const id of [...route.pubs, ...route.subs]) {
-        const acc = perModule.get(id);
-        if (acc) { acc.hz += s.hz; acc.bps += s.bps; }
-      }
-    }
-    const maxBps = Math.max(1, ...[...perModule.values()].map((v) => v.bps));
-    els.modlist.innerHTML = mods
-      .sort((a, b) => (perModule.get(b.id)?.bps ?? 0) - (perModule.get(a.id)?.bps ?? 0))
-      .map((m) => {
-        const v = perModule.get(m.id) ?? { hz: 0, bps: 0 };
-        return `<div class="row"><span class="name">${m.label}</span>` +
-          `<span class="hz"><b>${v.hz.toFixed(1)}</b> Hz</span>` +
-          `<span class="bps">${human(v.bps)}/s</span></div>` +
-          `<div class="meter"><i style="width:${Math.min(100, (v.bps / maxBps) * 100)}%"></i></div>`;
-      })
-      .join("");
-  }
-
-  els.topics.style.display = showTopics ? "" : "none";
-  els.topcount.textContent = tops.length;
-  if (showTopics) {
-    const rows = [...stats.entries()]
-      .filter(([, s]) => s.bps > 0 || s.total > 0)
-      .sort((a, b) => b[1].bps - a[1].bps)
-      .slice(0, 16);
-    els.topiclist.innerHTML = rows
-      .map(([ch, s]) => {
-        const transport = perTopic.get(ch)?.transport || nodes.get(ch)?.transport || "";
-        const glyph = transport === "zenoh" ? "▲" : "◆";
-        return `<div class="row"><span class="mark" style="color:${colorFor(ch, transport)}">${glyph}</span>` +
-          `<span class="name">${channelType(ch, transport).base}</span>` +
-          `<span class="hz"><b>${s.hz.toFixed(1)}</b> Hz</span>` +
-          `<span class="bps">${human(s.bps)}/s</span></div>`;
-      })
-      .join("") || '<div class="empty">no traffic yet</div>';
-  }
-
-  els.dtop.style.display = showDtop ? "" : "none";
-  if (showDtop) renderDtop();
+function human(bytes) {
+  const u = ["B", "KiB", "MiB", "GiB"]; let i = 0;
+  while (bytes >= 1024 && i < u.length - 1) { bytes /= 1024; i++; }
+  return bytes.toFixed(i ? 1 : 0) + " " + u[i];
 }
 
-// Per-worker resource stats (folded in from lcm_spy's "dtop" tab). Populated only
-// when a blueprint is launched with --dtop; otherwise shows a waiting hint.
+// ─────────────────────────────────────────────────────────── app-bus feed ──
+const connEl = document.getElementById("conn");
+let lastMsg = 0, dtopData = null, dtopAt = 0;
+const dimApp = new DimAppFrontend();
+dimApp.receiveRequest((tag, msg) => {
+  if (tag !== "lcmflow" || !msg) return;
+  lastMsg = Date.now();
+  connEl.textContent = "▮ live"; connEl.className = "live";
+  if (msg.kind === "graph") applyGraph(msg);
+  else if (msg.kind === "dtop") { dtopData = msg.data; dtopAt = Date.now(); }
+  else if (msg.kind === "packets") {
+    // Live traffic only *animates* the blueprint graph: match each channel to a
+    // topic node by normalized name; ignore channels not in the graph.
+    for (const ev of msg.events) {
+      const [transport, channel, count, bytes] = ev;
+      const nodeId = topicBase.get(normBase(channel));
+      if (!nodeId) continue;
+      noteTraffic(nodeId, count, bytes, transport);
+    }
+  }
+});
+setInterval(() => { if (Date.now() - lastMsg > 4000) { connEl.textContent = "○ waiting for run"; connEl.className = ""; } }, 1000);
+dimApp.send("hello");
+
+// debug handle (console poking / offline rendering checks)
+globalThis.__lcmflow = { applyGraph, noteTraffic, nodes, edges, routes, topicBase, moduleInfo, fitView, showCard, toggleCardPin, setHover };
+
+// ─────────────────────────────────────────────────────────── animation ──
+let paused = false;
+function refreshEdges() {
+  for (const e of edges) {
+    if (!e.el) continue;
+    const on = hovered && (e.from === hovered.id || e.to === hovered.id);
+    const lit = e.active > 0.05;
+    const hot = on || lit;
+    e.el.style.color = hot ? accentColor(e) : "var(--border)";       // arrow marker (currentColor)
+    e.el.style.stroke = hot ? accentColor(e) : "var(--border)";
+    e.el.style.strokeWidth = on ? "2.4" : lit ? "2" : "1.5";
+    e.el.style.strokeDasharray = lit ? "5 6" : "none";
+    if (e.lab) e.lab.classList.toggle("show", hot);
+  }
+}
+function animate() {
+  requestAnimationFrame(animate);
+  if (!paused && heat > 0.04) {
+    stepForces();
+    heat *= 0.985;
+    if (heat < 0.04) heat = 0;
+    positionAll();
+  }
+  let any = false;
+  for (const e of edges) { if (!paused && e.active > 0.001) { e.active *= 0.95; any = true; } }
+  for (const n of nodes.values()) {
+    if (!paused && n.active > 0.001) { n.active *= 0.95; }
+    if (n.el) n.el.classList.toggle("pulse", n.active > 0.3);
+  }
+  if (any) {
+    const off = (performance.now() * -0.03) % 11;
+    for (const e of edges) if (e.active > 0.05 && e.el) e.el.style.strokeDashoffset = off.toFixed(1);
+    refreshEdges();
+  }
+}
+requestAnimationFrame(animate);
+
+// periodic HUD + module rate badges + edge labels + dtop
+setInterval(() => {
+  const now = performance.now();
+  rollWindow(windowEvents, now);
+  let wm = 0, wb = 0;
+  for (const [, c, b] of windowEvents) { wm += c; wb += b; }
+  const mods = [...nodes.values()].filter((n) => n.kind === "module");
+  const tops = [...nodes.values()].filter((n) => n.kind === "topic");
+  for (const t of tops) if (t.el) t.el.classList.toggle("orphan", isOrphan(t.id));   // pub-only → gray (live)
+  document.getElementById("r-graph").innerHTML = `<b>${mods.length}</b> modules · <b>${tops.length}</b> topics`;
+  document.getElementById("r-rate").innerHTML = `<b>${(wm / 5).toFixed(1)}</b> Hz · <b>${human(wb / 5)}</b>/s`;
+
+  const stats = topicWindowStats();
+  const perModule = new Map(mods.map((m) => [m.id, 0]));
+  for (const [topic, route] of routes) {
+    const s = stats.get(topic); if (!s) continue;
+    for (const id of [...route.pubs, ...route.subs]) if (perModule.has(id)) perModule.set(id, perModule.get(id) + s.hz);
+  }
+  for (const m of mods) {
+    const hz = perModule.get(m.id) || 0;
+    m.el.querySelector(".rate").innerHTML = hz > 0.05 ? `<b>${hz.toFixed(1)}</b> Hz` : "";
+  }
+  if (cardNode && cardEl.classList.contains("show")) { cardEl.innerHTML = moduleCardHtml(cardNode); positionCard(cardNode); }
+  for (const e of edges) {
+    if (!e.lab) continue;
+    const s = stats.get(e.channel);
+    e.lab.innerHTML = s && s.hz > 0.05
+      ? `<b>${s.hz.toFixed(1)}</b> Hz`
+      : channelType(e.channel).base.split("/").filter(Boolean).pop() || e.channel;
+  }
+  refreshEdges();
+  renderDtop();
+}, 400);
+
+// ───────────────────────────────────────────────────────────────── dtop ──
 function renderDtop() {
   const rows = [];
   if (dtopData) {
-    const add = (role, x, alive) => rows.push({
-      role, alive, cpu: x.cpu_percent || 0, mem: x.pss || 0 });
+    const add = (role, x, alive) => rows.push({ role, alive, cpu: x.cpu_percent || 0, mem: x.pss || 0 });
     if (dtopData.coordinator) add("coordinator", dtopData.coordinator, true);
-    for (const w of dtopData.workers || []) {
-      const id = w.worker_id ?? "?";
-      add(w.dedicated ? `worker ${id} (ded)` : `worker ${id}`, w, w.alive !== false);
-    }
+    for (const w of dtopData.workers || []) add(w.dedicated ? `worker ${w.worker_id ?? "?"} (ded)` : `worker ${w.worker_id ?? "?"}`, w, w.alive !== false);
   }
-  // connection note: we count dtop as "live" if a frame arrived in the last 4s
   const live = dtopData && (Date.now() - dtopAt < 4000);
-  const status = els.dtopStatus;
-  if (status) {
-    status.textContent = live ? "● LIVE" : "○ NO STREAM";
-    status.style.color = live ? "var(--info)" : "var(--muted-fg)";
-  }
-  els.dtopcount.textContent = rows.length || "";
-  els.dtoplist.innerHTML = rows.length
-    ? rows.map((r) =>
-        `<div class="row"><span class="name"${r.alive ? "" : ' style="opacity:.5"'}>${r.role}</span>` +
-        `<span class="cpu"><b>${r.cpu.toFixed(0)}</b>%</span>` +
-        `<span class="mem">${human(r.mem)}</span></div>`).join("")
-    : '<div class="empty">no stream — launch a blueprint with <b style="color:var(--mut)">--dtop</b></div>';
+  const status = document.getElementById("dtop-status");
+  status.textContent = live ? "● live" : "○ no stream";
+  status.style.color = live ? "var(--info)" : "var(--muted-fg)";
+  document.getElementById("dtop-body").innerHTML = rows.length
+    ? rows.map((r) => `<div class="row"><span class="n"${r.alive ? "" : ' style="opacity:.5"'}>${r.role}</span>` +
+        `<span class="c"><b>${r.cpu.toFixed(0)}</b>%</span><span class="c">${human(r.mem)}</span></div>`).join("")
+    : '<div class="empty">launch a blueprint with <b>--dtop</b></div>';
 }
 
-// ------------------------------------------------------------ interaction --
-let dragging = null;
-
-// Map a pointer event to canvas-local coords (the canvas may be offset/scrolled
-// in the stacked layout, so window clientX/Y is not the same as canvas space).
-function toCanvas(ev) {
-  const r = canvas.getBoundingClientRect();
-  return { x: ev.clientX - r.left, y: ev.clientY - r.top };
-}
-
-function nodeAt(x, y) {
-  let best = null, bestD = 1e9;
-  for (const n of nodes.values()) {
-    const d = Math.hypot(x - n.x, y - n.y);
-    if (d < n.r + 12 && d < bestD) { best = n; bestD = d; }
-  }
-  return best;
-}
-
-canvas.addEventListener("mousedown", (ev) => {
-  const c = toCanvas(ev);
-  const n = nodeAt(c.x, c.y);
-  if (n) { dragging = n; n.fixed = true; }
-});
-function computeFocus(node) {
-  if (!node) return null;
-  const ids = new Set([node.id]);
-  for (const e of edges) {
-    if (e.from === node.id) ids.add(e.to);
-    if (e.to === node.id) ids.add(e.from);
-  }
-  return ids;
-}
-
-addEventListener("mousemove", (ev) => {
-  const c = toCanvas(ev);
-  if (dragging) { dragging.x = c.x; dragging.y = c.y; return; }
-  hovered = nodeAt(c.x, c.y);
-  focusIds = computeFocus(hovered);
-  if (hovered) {
-    const s = topicWindowStats(performance.now()).get(hovered.id);
-    const tip = els.tooltip;
-    tip.style.display = "block";
-    tip.style.left = Math.min(innerWidth - 440, ev.clientX + 16) + "px";
-    tip.style.top = ev.clientY + 14 + "px";
-    if (hovered.kind === "topic") {
-      const route = routes.get(hovered.id);
-      const orphan = route && route.pubs.size > 0 && route.subs.size === 0;
-      tip.innerHTML = `<div class="tname">${hovered.id}</div>` +
-        `<div class="trow">type <b>${hovered.msgType || "?"}</b> · transport <b>${hovered.transport || "?"}</b></div>` +
-        (s ? `<div class="trow"><b>${s.hz.toFixed(1)}</b> Hz · <b>${human(s.bps)}</b>/s · Σ <b>${human(s.total)}</b></div>` : "") +
-        (route ? `<div class="trow">pub <b>${[...route.pubs].map((p) => p.slice(2)).join(", ") || "?"}</b></div>` +
-                 `<div class="trow">sub <b>${[...route.subs].map((p) => p.slice(2)).join(", ") || "—"}</b></div>` : "") +
-        (orphan ? `<div class="trow" style="color:var(--warn)">▲ published but no module subscribes in this blueprint</div>` : "");
-    } else {
-      const attached = [...routes.entries()].filter(([, r]) => r.pubs.has(hovered.id) || r.subs.has(hovered.id));
-      tip.innerHTML = `<div class="tname">${hovered.label}</div>` +
-        `<div class="trow"><b>${attached.length}</b> streams</div>` +
-        attached.slice(0, 12).map(([t, r]) =>
-          `<div class="trow">${r.pubs.has(hovered.id) ? "▸ out" : "◂ in"} <b>${t.split("#")[0]}</b></div>`).join("");
-    }
-  } else {
-    els.tooltip.style.display = "none";
-  }
-});
-addEventListener("mouseup", () => {
-  if (dragging) { dragging.fixed = false; dragging = null; }
-});
+// ─────────────────────────────────────────────────────────── keyboard ──
 addEventListener("keydown", (ev) => {
   if (ev.key === " ") { paused = !paused; ev.preventDefault(); }
-  if (ev.key === "t") showTopics = !showTopics;
-  if (ev.key === "m") showModules = !showModules;
-  if (ev.key === "f") showFps = !showFps;
-  if (ev.key === "d") showDtop = !showDtop;
-  if (ev.key === "l") document.body.classList.toggle("dark");   // manual theme flip
+  if (ev.key === "d") document.getElementById("dtop").classList.toggle("show");
+  if (ev.key === "l") document.body.classList.toggle("dark");
+  if (ev.key === "f" || ev.key === "0") fitView();
 });
+
+// follow OS light/dark (same pattern as the rest of the desktop)
+(function () {
+  const mq = matchMedia("(prefers-color-scheme: light)");
+  const apply = () => document.body.classList.toggle("dark", !mq.matches);
+  apply(); mq.addEventListener("change", apply);
+})();
+
+applyView();
+addEventListener("resize", applyView);
 </script>
 </body>
 </html>
