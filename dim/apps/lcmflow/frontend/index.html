@@ -149,7 +149,17 @@ limitations under the License.
   #topics { top: 106px; left: 12px; width: 272px; z-index: 6; padding: 0; bottom: 54px; max-height: calc(100vh - 160px); display: flex; flex-direction: column; }
   #topics.hide { display: none; }
   #topics.collapsed { bottom: auto; max-height: none; }
-  #topics.collapsed .body { display: none; }
+  #topics.collapsed .body, #topics.collapsed .thead { display: none; }
+  #topics .thead { display: flex; align-items: center; gap: 7px; padding: 3px 12px 4px; font-size: 8.5px;
+    letter-spacing: 1px; color: var(--muted-fg); border-bottom: 1px solid var(--border); }
+  #topics .thead .sp { flex: none; width: 6px; }
+  #topics .thead .n { flex: 1 1 auto; min-width: 0; }
+  #topics .thead .hz { flex: none; width: 52px; text-align: right; }
+  #topics .thead .tp { flex: none; width: 62px; text-align: right; }
+  #topics .thead .sortkey { cursor: pointer; user-select: none; }
+  #topics .thead .sortkey:hover { color: var(--fg); }
+  #topics .thead .sortkey.active { color: var(--info); font-weight: 700; }
+  #topics .thead .sortkey.active::after { content: " ▾"; font-size: 7px; }
   #topics.collapsed h2 { border-bottom: none; }
   #topics.collapsed .caret { transform: rotate(-90deg); }
   #topics h2 { margin: 0; font-size: 9px; font-weight: 600; letter-spacing: 2px; color: var(--muted-fg);
@@ -309,6 +319,11 @@ limitations under the License.
 
 <div class="bar" id="topics">
   <h2 id="topics-head"><span class="thd"><span class="caret">▾</span> TOPICS · RATE</span> <span id="topics-count">0</span></h2>
+  <div class="thead" id="topics-sort" title="click a column to sort">
+    <span class="sp"></span><span class="n">TOPIC</span>
+    <span class="hz sortkey" data-sort="hz">Hz</span>
+    <span class="tp sortkey" data-sort="bps">bit/s</span>
+  </div>
   <div class="body" id="topics-body"></div>
 </div>
 
@@ -1231,6 +1246,20 @@ setInterval(() => {
 }, 400);
 
 // ─────────────────────────────────────────────────────────────── topics ──
+let topicSort = "bps";   // sort column: "bps" (bandwidth) | "hz"
+function applyTopicSortUI() {
+  for (const el of document.querySelectorAll("#topics-sort .sortkey")) {
+    el.classList.toggle("active", el.dataset.sort === topicSort);
+  }
+}
+document.getElementById("topics-sort").addEventListener("click", (ev) => {
+  const key = ev.target.closest(".sortkey");
+  if (!key) return;
+  topicSort = key.dataset.sort;
+  applyTopicSortUI();
+  renderTopics([...nodes.values()].filter((n) => n.kind === "topic"), topicWindowStats());
+});
+applyTopicSortUI();
 function renderTopics(tops, stats) {
   const panel = document.getElementById("topics");
   if (panel.classList.contains("hide")) return;
@@ -1238,7 +1267,9 @@ function renderTopics(tops, stats) {
   const rows = tops.map((t) => {
     const s = stats.get(t.id);
     return { label: t.label, accent: t.accent, hz: s ? s.hz : 0, bps: s ? s.bps : 0, live: !!(s && s.hz > 0.05) };
-  }).sort((a, b) => (b.bps - a.bps) || (b.hz - a.hz) || a.label.localeCompare(b.label));
+  }).sort((a, b) => topicSort === "hz"
+    ? (b.hz - a.hz) || (b.bps - a.bps) || a.label.localeCompare(b.label)
+    : (b.bps - a.bps) || (b.hz - a.hz) || a.label.localeCompare(b.label));
   const maxHz = Math.max(0, ...rows.filter((r) => r.live).map((r) => r.hz));
   const maxBps = Math.max(0, ...rows.filter((r) => r.live).map((r) => r.bps));
   const body = document.getElementById("topics-body");
