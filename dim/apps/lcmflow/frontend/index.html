@@ -89,6 +89,11 @@ limitations under the License.
   /* nobody subscribes → gray it out (override the type accent) */
   .node.topic.orphan { border-style: dashed; --accent: var(--muted-fg);
     border-color: color-mix(in oklch, var(--muted-fg) 42%, var(--border)); }
+  /* floating "recent activity" topic — seen live in the last 5min but not declared
+     in the blueprint (e.g. cancel_goal). Dotted ring + a small LIVE tag flag it. */
+  .node.topic.recent { border-style: dotted;
+    border-color: color-mix(in oklch, var(--accent, var(--info)) 75%, var(--border)); }
+  .node.topic.recent .rate::before { content: "recent · "; color: var(--muted-fg); font-weight: 400; }
 
   /* the little connection handles React-Flow draws on each node edge */
   .handle { position: absolute; width: 7px; height: 7px; border-radius: 50%;
@@ -169,12 +174,38 @@ limitations under the License.
   #dtop { top: 12px; right: 12px; width: 264px; z-index: 6; padding: 0; display: none; }
   #dtop.show { display: block; }
   #dtop h2 { margin: 0; font-size: 9px; font-weight: 600; letter-spacing: 2px; color: var(--muted-fg);
-    padding: 9px 12px 8px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
+    padding: 9px 12px 8px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; cursor: pointer; user-select: none; }
+  #dtop h2:hover { color: var(--fg); }
+  #dtop h2 .thd { display: inline-flex; align-items: center; gap: 6px; }
+  #dtop h2 .caret { display: inline-block; font-size: 8px; transition: transform .12s; }
+  #dtop.collapsed .body { display: none; }
+  #dtop.collapsed h2 { border-bottom: none; }
+  #dtop.collapsed .caret { transform: rotate(-90deg); }
   #dtop .body { padding: 6px 12px 9px; }
   #dtop .row { display: flex; align-items: baseline; gap: 8px; font-size: 11px; padding: 2px 0; }
   #dtop .row .n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #dtop .row .c { flex: none; color: var(--muted-fg); } #dtop .row .c b { color: var(--info); font-weight: 600; }
+  #dtop .row { cursor: default; border-radius: 5px; margin: 0 -5px; padding-left: 5px; padding-right: 5px; }
+  #dtop .row:hover { background: color-mix(in oklch, var(--fg) 8%, transparent); }
   #dtop .empty { color: var(--muted-fg); font-size: 11px; padding: 4px 0; }
+  /* full per-worker detail on hover (mirrors the `dimos dtop` TUI) */
+  #dtop-tip { position: fixed; z-index: 30; width: 250px; pointer-events: none; opacity: 0;
+    transition: opacity .1s; background: color-mix(in oklch, var(--card) 96%, transparent);
+    border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.4); font-size: 11px; color: var(--fg); }
+  #dtop-tip.show { opacity: 1; }
+  #dtop-tip .th { display: flex; align-items: baseline; gap: 6px; margin-bottom: 5px; }
+  #dtop-tip .th .role { font-weight: 700; letter-spacing: .3px; }
+  #dtop-tip .th .pid { margin-left: auto; color: var(--muted-fg); font-size: 9px; font-variant-numeric: tabular-nums; }
+  #dtop-tip .mods { color: var(--muted-fg); font-size: 10px; margin-bottom: 6px; word-break: break-word; }
+  #dtop-tip .kv { display: flex; flex-wrap: wrap; gap: 2px 12px; }
+  #dtop-tip .kv span { display: inline-flex; gap: 4px; color: var(--muted-fg); font-variant-numeric: tabular-nums; }
+  #dtop-tip .kv span b { color: var(--fg); font-weight: 600; }
+  #dtop-tip .ch { margin-top: 6px; border-top: 1px solid var(--border); padding-top: 5px; }
+  #dtop-tip .ch .chd { color: var(--muted-fg); font-size: 9px; letter-spacing: 1px; margin-bottom: 3px; }
+  #dtop-tip .ch .crow { display: flex; gap: 6px; font-size: 10px; padding: 1px 0; }
+  #dtop-tip .ch .crow .cn { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+  #dtop-tip .ch .crow .cp { flex: none; color: var(--muted-fg); font-variant-numeric: tabular-nums; }
 
   /* module card — launcher-style detail popover on hover/click */
   #card { width: 300px; max-height: 74vh; overflow-y: auto; padding: 0; display: none;
@@ -282,8 +313,10 @@ limitations under the License.
 </div>
 
 <div class="bar show" id="dtop">
-  <h2>WORKERS · CPU/RAM <span id="dtop-status">○ no stream</span></h2>
+  <h2 id="dtop-head"><span class="thd"><span class="caret">▾</span> WORKERS · CPU/RAM</span> <span id="dtop-status">○ no stream</span></h2>
   <div class="body" id="dtop-body"></div>
+</div>
+<div id="dtop-tip">
 </div>
 
 <div class="bar" id="card"></div>
@@ -694,30 +727,20 @@ const defs = svg.querySelector("defs");
 const hintEl = document.getElementById("hint");
 let view = { x: 0, y: 0, k: 1 };   // pan (x,y) + zoom (k)
 
-// markerUnits=userSpaceOnUse → arrows are a fixed WORLD size, so on their own
-// they'd shrink with the graph and vanish when a layout zooms far out. We counter
-// this in syncMarkerScale(): the marker size is rescaled by 1/view.k so arrowheads
-// stay a roughly constant on-screen size at every zoom level. refX/refY are in the
-// viewBox (0–10) coordinate space, so they stay correct regardless of size.
-const ARROW_SCREEN_PX = 3.6, ARROWMID_SCREEN_PX = 4;
+// markerUnits=strokeWidth → arrowheads are sized as a multiple of each edge's
+// stroke-width, so they scale WITH the graph/zoom exactly like the lines do (no
+// per-view resizing). This keeps them proportional to the lines at every zoom and
+// on every screen — on a wide monitor the lines render thicker, so the heads grow
+// with them and stay visible. refX/refY are in the viewBox (0–10) coordinate space.
+const ARROW_STROKE_MULT = 6, ARROWMID_STROKE_MULT = 6;
 defs.innerHTML = `
-  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="${ARROW_SCREEN_PX}" markerHeight="${ARROW_SCREEN_PX}" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="${ARROW_STROKE_MULT}" markerHeight="${ARROW_STROKE_MULT}" markerUnits="strokeWidth" orient="auto-start-reverse">
     <path d="M0 0.5 L10 5 L0 9.5 z" fill="context-stroke"/>
   </marker>
-  <marker id="arrowmid" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="${ARROWMID_SCREEN_PX}" markerHeight="${ARROWMID_SCREEN_PX}" markerUnits="userSpaceOnUse" orient="auto">
+  <marker id="arrowmid" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="${ARROWMID_STROKE_MULT}" markerHeight="${ARROWMID_STROKE_MULT}" markerUnits="strokeWidth" orient="auto">
     <path d="M0 0.5 L10 5 L0 9.5 z" fill="context-stroke"/>
   </marker>`;
-const arrowMarker = defs.querySelector("#arrow");
-const arrowMidMarker = defs.querySelector("#arrowmid");
-function syncMarkerScale() {
-  const inv = 1 / Math.max(0.05, view.k);
-  const a = (ARROW_SCREEN_PX * inv).toFixed(1);
-  const m = (ARROWMID_SCREEN_PX * inv).toFixed(1);
-  arrowMarker.setAttribute("markerWidth", a);
-  arrowMarker.setAttribute("markerHeight", a);
-  arrowMidMarker.setAttribute("markerWidth", m);
-  arrowMidMarker.setAttribute("markerHeight", m);
-}
+function syncMarkerScale() {}  // no-op: markers now scale via markerUnits=strokeWidth
 
 function isOrphan(topicId) {
   const r = routes.get(topicId);
@@ -740,6 +763,7 @@ function buildDom() {
       el.querySelector(".name").textContent = n.label;
     } else {
       if (isOrphan(n.id)) el.classList.add("orphan");
+      if (n.dynamic) el.classList.add("recent");
       el.innerHTML =
         `<span class="name"></span><span class="rate"></span><span class="type"></span>` +
         `<span class="handle l"></span><span class="handle r"></span>`;
@@ -1033,7 +1057,33 @@ function noteTraffic(channel, count, bytes, transport) {
   if (transport && !t.transport) t.transport = transport;
   t.win.push([lastPacketAt, count, bytes]);
   const hub = nodes.get(channel);
-  if (hub) { hub.active = 1; for (const e of edgesOf(hub)) e.active = 1; }
+  if (hub) { hub.active = 1; hub.lastTraffic = lastPacketAt; for (const e of edgesOf(hub)) e.active = 1; }
+}
+// Floating "recent activity" topics: channels seen live but absent from the
+// blueprint (e.g. a rarely-fired cancel_goal) get their own topic node so they
+// show up on the graph, and are swept away RECENT_TOPIC_MS after their last
+// packet. Blueprint topics are never swept — they just go idle.
+const RECENT_TOPIC_MS = 5 * 60 * 1000;
+function ensureDynamicTopic(base, transport) {
+  const nodeId = "dyn:" + base;
+  const hub = ensureNode(nodeId, "topic", base, transport);
+  hub.dynamic = true; hub.baseKey = base;
+  if (!routes.has(nodeId)) routes.set(nodeId, { pubs: new Set(), subs: new Set() });
+  topicBase.set(base, [nodeId]);
+  return nodeId;
+}
+function removeDynamicTopic(id) {
+  const n = nodes.get(id);
+  if (!n) return;
+  n.el?.remove();
+  for (let i = edges.length - 1; i >= 0; i--) {
+    const e = edges[i];
+    if (e.from === id || e.to === id) { e.el?.remove(); e.lab?.remove(); edges.splice(i, 1); edgeIndex.delete(e.from + "|" + e.to); }
+  }
+  nodes.delete(id);
+  routes.delete(id);
+  perTopic.delete(id);
+  if (n.baseKey) topicBase.delete(n.baseKey);
 }
 function rollWindow(arr, now) { while (arr.length && now - arr[0][0] > 5000) arr.shift(); }
 function topicWindowStats() {
@@ -1057,6 +1107,18 @@ function humanBits(bytesPerSec) {
   while (bits >= 1000 && i < u.length - 1) { bits /= 1000; i++; }
   return bits.toFixed(bits >= 100 || i === 0 ? 0 : 1) + " " + u[i];
 }
+// value → color on a cool→hot gradient (blue = low/slow, red = high/fast).
+// Hue climbs 210°→360° (blue → violet → magenta → red) so it skips the green
+// band a straight 210→8 ramp would pass through.
+function heatColor(frac) {
+  const f = Math.max(0, Math.min(1, frac));
+  return `hsl(${(210 + 150 * f).toFixed(0)} 85% 62%)`;
+}
+// normalize on a log scale (rates/mem span orders of magnitude) → 0..1 vs a max.
+function heatFracLog(value, max) {
+  if (!(max > 0) || !(value > 0)) return 0;
+  return Math.log1p(value) / Math.log1p(max);
+}
 
 // ─────────────────────────────────────────────────────────── app-bus feed ──
 const connEl = document.getElementById("conn");
@@ -1068,22 +1130,27 @@ dimApp.receiveRequest((tag, msg) => {
   connEl.textContent = "▮ live"; connEl.className = "live";
   if (msg.kind === "graph") applyGraph(msg);
   else if (msg.kind === "dtop") { dtopData = msg.data; dtopAt = Date.now(); }
-  else if (msg.kind === "packets") {
-    // Live traffic only *animates* the blueprint graph: match each channel to a
-    // topic node by normalized name; ignore channels not in the graph.
-    for (const ev of msg.events) {
-      const [transport, channel, count, bytes] = ev;
-      const ids = topicBase.get(normBase(channel));
-      if (!ids) continue;
-      for (const nodeId of ids) noteTraffic(nodeId, count, bytes, transport);
-    }
-  }
+  else if (msg.kind === "packets") handlePackets(msg.events);
 });
+// Live traffic animates the blueprint graph: match each channel to a topic node
+// by normalized name. Channels with no blueprint node get a floating "recent
+// activity" node (swept after 5min idle) so late/rare topics still appear.
+function handlePackets(events) {
+  for (const ev of events || []) {
+    const [transport, channel, count, bytes] = ev;
+    const base = normBase(channel);
+    let ids = topicBase.get(base);
+    if (!ids) ids = [ensureDynamicTopic(base, transport)];
+    for (const nodeId of ids) noteTraffic(nodeId, count, bytes, transport);
+  }
+  // a new floating node needs its DOM built + a gentle relax to place it
+  if (dirty) { buildDom(); dirty = false; if (!simFrozen) reheat(0.5); }
+}
 setInterval(() => { if (Date.now() - lastMsg > 4000) { connEl.textContent = "○ waiting for run"; connEl.className = ""; } }, 1000);
 dimApp.send("hello");
 
 // debug handle (console poking / offline rendering checks)
-globalThis.__lcmflow = { applyGraph, noteTraffic, nodes, edges, routes, topicBase, moduleInfo, fitView, showCard, toggleCardPin, setHover, setLayout, LAYOUTS, relaxAndFrame };
+globalThis.__lcmflow = { applyGraph, noteTraffic, handlePackets, removeDynamicTopic, feedDtop: (d) => { dtopData = d; dtopAt = Date.now(); renderDtop(); }, nodes, edges, routes, topicBase, moduleInfo, fitView, showCard, toggleCardPin, setHover, setLayout, LAYOUTS, relaxAndFrame };
 
 // ─────────────────────────────────────────────────────────── animation ──
 let paused = false;
@@ -1130,6 +1197,10 @@ setInterval(() => {
   rollWindow(windowEvents, now);
   let wm = 0, wb = 0;
   for (const [, c, b] of windowEvents) { wm += c; wb += b; }
+  // sweep floating "recent activity" topics that have been idle past the window
+  for (const n of nodes.values()) {
+    if (n.dynamic && now - (n.lastTraffic || 0) > RECENT_TOPIC_MS) removeDynamicTopic(n.id);
+  }
   const mods = [...nodes.values()].filter((n) => n.kind === "module");
   const tops = [...nodes.values()].filter((n) => n.kind === "topic");
   for (const t of tops) if (t.el) t.el.classList.toggle("orphan", isOrphan(t.id));   // pub-only → gray (live)
@@ -1159,37 +1230,116 @@ function renderTopics(tops, stats) {
     const s = stats.get(t.id);
     return { label: t.label, accent: t.accent, hz: s ? s.hz : 0, bps: s ? s.bps : 0, live: !!(s && s.hz > 0.05) };
   }).sort((a, b) => (b.bps - a.bps) || (b.hz - a.hz) || a.label.localeCompare(b.label));
+  const maxHz = Math.max(0, ...rows.filter((r) => r.live).map((r) => r.hz));
+  const maxBps = Math.max(0, ...rows.filter((r) => r.live).map((r) => r.bps));
   const body = document.getElementById("topics-body");
   body.innerHTML = rows.length
-    ? rows.map((r) =>
-        `<div class="trow ${r.live ? "live" : "idle"}" style="--accent:var(${r.accent})">` +
-        `<span class="dot"></span><span class="n">${escapeHtml(r.label)}</span>` +
-        `<span class="hz">${r.live ? `<b>${r.hz.toFixed(1)}</b> Hz` : "—"}</span>` +
-        `<span class="tp">${r.live ? humanBits(r.bps) : "—"}</span></div>`).join("")
+    ? rows.map((r) => {
+        const hzCol = heatColor(heatFracLog(r.hz, maxHz));
+        const tpCol = heatColor(heatFracLog(r.bps, maxBps));
+        return `<div class="trow ${r.live ? "live" : "idle"}" style="--accent:var(${r.accent})">` +
+          `<span class="dot"></span><span class="n">${escapeHtml(r.label)}</span>` +
+          `<span class="hz">${r.live ? `<b style="color:${hzCol}">${r.hz.toFixed(1)}</b> Hz` : "—"}</span>` +
+          `<span class="tp"${r.live ? ` style="color:${tpCol}"` : ""}>${r.live ? humanBits(r.bps) : "—"}</span></div>`;
+      }).join("")
     : '<div class="empty">no topics — start a blueprint</div>';
 }
 
 // ───────────────────────────────────────────────────────────────── dtop ──
+let dtopRows = [];   // raw entries backing the rows, indexed for hover detail
 function renderDtop() {
   const rows = [];
   if (dtopData) {
-    const add = (role, x, alive) => rows.push({ role, alive, cpu: x.cpu_percent || 0, mem: x.pss || 0 });
+    const add = (role, x, alive) => rows.push({ role, alive, cpu: x.cpu_percent || 0, mem: x.pss || 0, raw: x });
     if (dtopData.coordinator) add("coordinator", dtopData.coordinator, true);
     for (const w of dtopData.workers || []) add(w.dedicated ? `worker ${w.worker_id ?? "?"} (ded)` : `worker ${w.worker_id ?? "?"}`, w, w.alive !== false);
   }
+  dtopRows = rows;
   const live = dtopData && (Date.now() - dtopAt < 4000);
   const status = document.getElementById("dtop-status");
   status.textContent = live ? "● live" : "○ no stream";
   status.style.color = live ? "var(--info)" : "var(--muted-fg)";
+  const maxMem = Math.max(0, ...rows.map((r) => r.mem));
   document.getElementById("dtop-body").innerHTML = rows.length
-    ? rows.map((r) => `<div class="row"><span class="n"${r.alive ? "" : ' style="opacity:.5"'}>${r.role}</span>` +
-        `<span class="c"><b>${r.cpu.toFixed(0)}</b>%</span><span class="c">${human(r.mem)}</span></div>`).join("")
+    ? rows.map((r, i) => {
+        const cpuCol = heatColor(Math.min(1, r.cpu / 100));
+        const memCol = heatColor(heatFracLog(r.mem, maxMem));
+        return `<div class="row" data-i="${i}"><span class="n"${r.alive ? "" : ' style="opacity:.5"'}>${r.role}</span>` +
+          `<span class="c"><b style="color:${cpuCol}">${r.cpu.toFixed(0)}</b>%</span>` +
+          `<span class="c" style="color:${memCol}">${human(r.mem)}</span></div>`;
+      }).join("")
     : '<div class="empty">launch a blueprint with <b>--dtop</b></div>';
+  if (dtopTipRow >= 0 && dtopRows[dtopTipRow]) showDtopTip(dtopTipRow);   // keep an open tip fresh
 }
+
+// seconds → compact duration (dtop TUI shows cpu_time_* as elapsed time)
+function humanSecs(s) {
+  s = +s || 0;
+  if (s < 60) return s.toFixed(s < 10 ? 2 : 1) + "s";
+  if (s < 3600) return Math.floor(s / 60) + "m " + Math.round(s % 60) + "s";
+  return Math.floor(s / 3600) + "h " + Math.round((s % 3600) / 60) + "m";
+}
+const dtopTipEl = document.getElementById("dtop-tip");
+let dtopTipRow = -1;
+// A full per-worker readout mirroring `dimos dtop`: every field the payload
+// carries (times, threads, fds, IO, child processes) — a superset of the row.
+function dtopTipHtml(r) {
+  const x = r.raw || {};
+  const kv = (label, val) => `<span>${label} <b>${val}</b></span>`;
+  const head = `<div class="th"><span class="role"${r.alive ? "" : ' style="opacity:.5"'}>${escapeHtml(r.role)}</span>` +
+    `${x.alive === false ? `<span style="color:var(--warn);font-size:9px">dead</span>` : ""}` +
+    `<span class="pid">pid ${x.pid ?? "—"}</span></div>`;
+  const mods = Array.isArray(x.modules) && x.modules.length
+    ? `<div class="mods">${escapeHtml(x.modules.join(", "))}</div>` : "";
+  const stats = `<div class="kv">` +
+    kv("CPU", `${(x.cpu_percent ?? 0).toFixed(0)}%`) +
+    kv("PSS", human(x.pss ?? 0)) +
+    kv("Thr", x.num_threads ?? "—") +
+    kv("Child", x.num_children ?? "—") +
+    kv("FDs", x.num_fds ?? "—") +
+    kv("UserT", humanSecs(x.cpu_time_user)) +
+    kv("SysT", humanSecs(x.cpu_time_system)) +
+    kv("ioT", humanSecs(x.cpu_time_iowait)) +
+    kv("IO↓", human(x.io_read_bytes ?? 0)) +
+    kv("IO↑", human(x.io_write_bytes ?? 0)) +
+    `</div>`;
+  const kids = Array.isArray(x.children) && x.children.length
+    ? `<div class="ch"><div class="chd">CHILD PROCS ${x.children.length}</div>` +
+      x.children.map((c) => `<div class="crow"><span class="cn">${escapeHtml(c.name || "?")} <span style="color:var(--muted-fg)">${c.pid ?? ""}</span></span>` +
+        `<span class="cp">${(c.cpu_percent ?? 0).toFixed(0)}%</span></div>`).join("") + `</div>`
+    : "";
+  return head + mods + stats + kids;
+}
+function showDtopTip(i) {
+  const r = dtopRows[i];
+  if (!r) return hideDtopTip();
+  dtopTipRow = i;
+  dtopTipEl.innerHTML = dtopTipHtml(r);
+  dtopTipEl.classList.add("show");
+  const rowEl = document.querySelector(`#dtop-body .row[data-i="${i}"]`);
+  const panel = document.getElementById("dtop").getBoundingClientRect();
+  const rb = (rowEl || document.getElementById("dtop-body")).getBoundingClientRect();
+  const tw = dtopTipEl.offsetWidth || 250, th = dtopTipEl.offsetHeight || 120;
+  let left = panel.left - tw - 10;                       // prefer left of the panel
+  if (left < 8) left = panel.right + 10;                 // else to the right
+  if (left + tw > innerWidth - 8) left = innerWidth - 8 - tw;
+  let top = Math.min(rb.top, innerHeight - 8 - th);
+  dtopTipEl.style.left = Math.max(8, left) + "px";
+  dtopTipEl.style.top = Math.max(8, top) + "px";
+}
+function hideDtopTip() { dtopTipRow = -1; dtopTipEl.classList.remove("show"); }
+document.getElementById("dtop-body").addEventListener("mouseover", (ev) => {
+  const row = ev.target.closest(".row"); if (!row) return;
+  showDtopTip(+row.dataset.i);
+});
+document.getElementById("dtop-body").addEventListener("mouseleave", hideDtopTip);
 
 // ─────────────────────────────────────────────────────────── keyboard ──
 document.getElementById("topics-head").addEventListener("click", () => {
   document.getElementById("topics").classList.toggle("collapsed");
+});
+document.getElementById("dtop-head").addEventListener("click", () => {
+  document.getElementById("dtop").classList.toggle("collapsed");
 });
 
 addEventListener("keydown", (ev) => {

@@ -116,6 +116,12 @@ function buildGraph(bp, info) {
         seen.add(key)
         edges.push({ module, topic, type, direction })
     }
+    // A blueprint's `.remappings([(Module, declared, wire)])` renames a module's
+    // stream to the channel it actually rides. Fuse on the wire name so a renamed
+    // publisher joins its subscriber (and matches live spy traffic) — otherwise a
+    // pub declared `twist_command` remapped to `cmd_vel` never meets `cmd_vel`.
+    const remap = new Map((bp.remappings ?? []).map((r) => [`${r.module}|${r.from}`, r.to]))
+    const wireName = (id, name) => remap.get(`${id}|${name}`) ?? name
     for (const id of bp.modules) {
         const m = modsById.get(id)
         if (!m) continue
@@ -124,8 +130,8 @@ function buildGraph(bp, info) {
             inputs: m.inputs ?? [], outputs: m.outputs ?? [],
             rpcs: m.rpcs ?? [], skills: m.skills ?? [],
         }
-        for (const s of m.outputs ?? []) addEdge(id, s.name, s.type ?? "", "out")
-        for (const s of m.inputs ?? []) addEdge(id, s.name, s.type ?? "", "in")
+        for (const s of m.outputs ?? []) addEdge(id, wireName(id, s.name), s.type ?? "", "out")
+        for (const s of m.inputs ?? []) addEdge(id, wireName(id, s.name), s.type ?? "", "in")
     }
     return { blueprint: bp.name, modules, edges }
 }
