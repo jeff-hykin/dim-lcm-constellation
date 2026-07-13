@@ -65,11 +65,6 @@ async function fetchJson(url) {
         return await res.json()
     } catch { return null }
 }
-function readRuns() {
-    try {
-        return JSON.parse(Deno.readTextFileSync(`${home}/.dimos/data/runs.json`))
-    } catch { return {} }
-}
 function alivePids() {
     // one `ps` snapshot → set of live pids, so we can prefer a running blueprint.
     try {
@@ -78,16 +73,37 @@ function alivePids() {
         return new Set(text.split("\n").map((s) => Number(s.trim())).filter(Boolean))
     } catch { return new Set() }
 }
-// newest-started run whose name is a known blueprint (prefer one still alive).
-function pickActiveBlueprint(knownNames) {
-    const runs = readRuns()
+// The dimos run registry (~/.local/state/dimos/runs/<run_id>.json) — the
+// canonical record of running blueprints, the same source `dimos stop` reads.
+// Every launch (terminal or desktop) writes one file with the blueprint name +
+// pid; keep only entries whose pid is alive. Newest-started last.
+function readDimosRegistry() {
+    const dir = `${home}/.local/state/dimos/runs`
     const live = alivePids()
-    const rows = Object.entries(runs)
-        .filter(([name]) => knownNames.has(name))
-        .map(([name, r]) => ({ name, started: r.started_at ?? "", alive: live.has(Number(r.pid)) }))
-    if (rows.length === 0) return null
-    rows.sort((a, b) => (b.alive - a.alive) || b.started.localeCompare(a.started))
-    return rows[0].name
+    const out = []
+    let names = []
+    try {
+        names = [...Deno.readDirSync(dir)].map((e) => e.name).filter((n) => n.endsWith(".json"))
+    } catch { return [] }
+    for (const name of names) {
+        try {
+            const rec = JSON.parse(Deno.readTextFileSync(`${dir}/${name}`))
+            if (!rec || typeof rec.blueprint !== "string" || !rec.pid) continue
+            if (!live.has(Number(rec.pid))) continue
+            out.push({ name: rec.blueprint, started: rec.started_at ?? "" })
+        } catch { /* stale / corrupt entry */ }
+    }
+    out.sort((a, b) => a.started.localeCompare(b.started))
+    return out
+}
+// The name of the blueprint that is actually running: the newest-started live
+// entry in the dimos run registry (the same source `dimos stop` reads). Returns
+// null when nothing is running. The name may be one the desktop's dimos dir
+// doesn't know.
+function pickActiveBlueprint() {
+    const reg = readDimosRegistry()
+    if (reg.length > 0) return reg[reg.length - 1].name
+    return null
 }
 function buildGraph(bp, info) {
     const modsById = new Map(info.modules.map((m) => [m.id, m]))
@@ -114,12 +130,22 @@ function buildGraph(bp, info) {
     return { blueprint: bp.name, modules, edges }
 }
 async function refreshGraph() {
+    const active = pickActiveBlueprint()
+    if (!active) {
+        if (graph.blueprint === "") return false
+        graph = { blueprint: "", modules: {}, edges: [] }
+        return true
+    }
     const info = await fetchJson(`${HELM_URL}/api/dimos-info`)
-    if (!info || !Array.isArray(info.blueprints)) return false
-    const byName = new Map(info.blueprints.map((b) => [b.name, b]))
-    const active = pickActiveBlueprint(new Set(byName.keys()))
-    if (!active) return false
-    const next = buildGraph(byName.get(active), info)
+    const byName = (info && Array.isArray(info.blueprints))
+        ? new Map(info.blueprints.map((b) => [b.name, b]))
+        : new Map()
+    // Running blueprint whose modules the desktop's dimos dir knows → full graph.
+    // Otherwise report it as running with no module metadata (add its dir to the
+    // desktop's dimos dirs to render the flow).
+    const next = byName.has(active)
+        ? buildGraph(byName.get(active), info)
+        : { blueprint: active, modules: {}, edges: [], unknown: true }
     if (JSON.stringify(next) === JSON.stringify(graph)) return false
     graph = next
     return true
