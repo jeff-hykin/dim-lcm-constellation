@@ -895,7 +895,16 @@ function zoomAt(sx, sy, factor) {
   view.k = k2; view.x = sx - wx * k2; view.y = sy - wy * k2;
   applyView();
 }
-flow.addEventListener("wheel", (ev) => { ev.preventDefault(); zoomAt(ev.clientX, ev.clientY, ev.deltaY < 0 ? 1.1 : 1 / 1.1); }, { passive: false });
+// Zoom factor scales with the actual scroll distance (not a fixed step per
+// event): a macOS trackpad fires many rapid wheel events, so a per-event step
+// compounds into runaway zoom. ZOOM_SENSITIVITY keeps it gentle; the clamp caps
+// how far any single (large mouse-wheel) event can jump.
+const ZOOM_SENSITIVITY = 0.0016;
+flow.addEventListener("wheel", (ev) => {
+  ev.preventDefault();
+  const factor = Math.min(1.2, Math.max(1 / 1.2, Math.exp(-ev.deltaY * ZOOM_SENSITIVITY)));
+  zoomAt(ev.clientX, ev.clientY, factor);
+}, { passive: false });
 document.getElementById("zin").onclick = () => zoomAt(innerWidth / 2, innerHeight / 2, 1.2);
 document.getElementById("zout").onclick = () => zoomAt(innerWidth / 2, innerHeight / 2, 1 / 1.2);
 document.getElementById("fit").onclick = fitView;
