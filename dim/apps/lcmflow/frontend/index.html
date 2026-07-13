@@ -17,6 +17,7 @@ limitations under the License.
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Dimensional · Module Flow</title>
 <link rel="stylesheet" href="/assets/theme.css" />
 <style>
@@ -40,7 +41,7 @@ limitations under the License.
   #flow.grabbing { cursor: grabbing; }
   #viewport { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
   #edges { position: absolute; overflow: visible; pointer-events: none; }
-  #edges path { fill: none; }
+  #edges > path { fill: none; }  /* edge lines only — NOT the nested marker/arrowhead paths */
 
   /* ── nodes ────────────────────────────────────────────────────────────── */
   .node { position: absolute; box-sizing: border-box; user-select: none; cursor: pointer;
@@ -62,8 +63,6 @@ limitations under the License.
   .node.module .kind { font-size: 8px; letter-spacing: 1.5px; font-weight: 700; color: var(--info); }
   .node.module .name { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 600; color: var(--fg);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .node.module .rate { flex: none; font-size: 10.5px; color: var(--muted-fg); white-space: nowrap; }
-  .node.module .rate b { color: var(--info); font-weight: 600; }
   .node.module .chev { flex: none; font-size: 9px; color: var(--muted-fg); transition: transform .12s ease; }
   .node.module.open .chev { transform: rotate(90deg); }
 
@@ -82,6 +81,9 @@ limitations under the License.
   .node.topic { display: flex; flex-direction: column; gap: 0; padding: 3px 11px; border-radius: 999px;
     border-width: 1.5px; border-color: color-mix(in oklch, var(--accent, var(--info)) 80%, var(--border)); }
   .node.topic .name { font-size: 11px; font-weight: 600; color: color-mix(in oklch, var(--fg) 62%, var(--muted-fg)); white-space: nowrap; line-height: 1.3; }
+  .node.topic .rate { font-size: 9px; color: var(--muted-fg); white-space: nowrap; line-height: 1.2; }
+  .node.topic .rate:empty { display: none; }
+  .node.topic .rate b { color: var(--accent, var(--info)); font-weight: 600; }
   .node.topic .type { display: none; font-size: 8px; letter-spacing: .5px; color: var(--accent, var(--info)); white-space: nowrap; line-height: 1.2; }
   .node.topic:hover .type, .node.topic.hi .type { display: block; }
   /* nobody subscribes → gray it out (override the type accent) */
@@ -94,13 +96,8 @@ limitations under the License.
   .handle.l { left: -4px; } .handle.r { right: -4px; }
   .node.hi .handle { border-color: var(--accent, var(--info)); }
 
-  /* edge labels (topic name / live Hz) float over the SVG at each edge midpoint */
-  .elabel { position: absolute; transform: translate(-50%, -50%); pointer-events: none;
-    font-size: 11px; padding: 1px 7px; border-radius: 999px; white-space: nowrap;
-    background: color-mix(in oklch, var(--card) 88%, transparent); border: 1px solid var(--border);
-    color: var(--muted-fg); opacity: 0; transition: opacity .12s ease; }
-  .elabel.show { opacity: 1; }
-  .elabel b { color: var(--accent, var(--info)); font-weight: 600; }
+  /* edge labels are permanently hidden — rates live on the topic nodes + topics table */
+  .elabel { display: none; }
 
   /* ── chrome: toolbar, controls, legend ────────────────────────────────── */
   .bar { position: fixed; z-index: 6; background: color-mix(in oklch, var(--card) 90%, transparent);
@@ -115,7 +112,7 @@ limitations under the License.
   #conn { letter-spacing: 1px; color: var(--muted-fg); white-space: nowrap; }
   #conn.live { color: var(--info); }
 
-  #layouts { top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; padding: 4px; }
+  #layouts { top: 60px; left: 12px; display: flex; gap: 2px; padding: 4px; }
   #layouts .lbl { align-self: center; font-size: 8px; letter-spacing: 1.5px; font-weight: 700;
     color: var(--muted-fg); padding: 0 6px 0 2px; }
   #layouts button { appearance: none; font: inherit; font-size: 10px; letter-spacing: 0.5px;
@@ -132,6 +129,7 @@ limitations under the License.
   #controls .fit { font-size: 11px; letter-spacing: 1px; }
 
   #legend { position: fixed; bottom: 18px; left: 62px; z-index: 6; display: flex; gap: 16px;
+    flex-wrap: wrap; max-width: 40vw;
     font-size: 10px; letter-spacing: 1px; color: var(--muted-fg); user-select: none; }
   #legend .k { display: inline-flex; align-items: center; gap: 6px; }
   #legend .sw { width: 18px; height: 10px; border: 1px solid var(--border); border-radius: 3px; }
@@ -139,7 +137,33 @@ limitations under the License.
   #legend .sw.top { border-radius: 999px; border-color: color-mix(in oklch, var(--info) 45%, var(--border)); }
 
   #help { position: fixed; bottom: 18px; right: 16px; z-index: 6; color: var(--muted-fg);
-    font-size: 10px; letter-spacing: 1px; user-select: none; opacity: 0.8; }
+    font-size: 10px; letter-spacing: 1px; user-select: none; opacity: 0.8;
+    max-width: 52vw; text-align: right; line-height: 1.5; }
+
+  /* topics table — sortable list of every topic + live rate; toggle with T */
+  #topics { top: 106px; left: 12px; width: 272px; z-index: 6; padding: 0; bottom: 54px; max-height: calc(100vh - 160px); display: flex; flex-direction: column; }
+  #topics.hide { display: none; }
+  #topics.collapsed { bottom: auto; max-height: none; }
+  #topics.collapsed .body { display: none; }
+  #topics.collapsed h2 { border-bottom: none; }
+  #topics.collapsed .caret { transform: rotate(-90deg); }
+  #topics h2 { margin: 0; font-size: 9px; font-weight: 600; letter-spacing: 2px; color: var(--muted-fg);
+    padding: 9px 12px 8px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; flex: none; cursor: pointer; user-select: none; }
+  #topics h2:hover { color: var(--fg); }
+  #topics h2 .thd { display: inline-flex; align-items: center; gap: 6px; color: var(--muted-fg); }
+  #topics h2 .caret { display: inline-block; font-size: 8px; transition: transform .12s; color: var(--muted-fg); }
+  #topics h2 #topics-count { color: var(--fg); }
+  #topics .body { padding: 5px 8px 8px; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; }
+  #topics .body::-webkit-scrollbar { width: 0; height: 0; display: none; }
+  #topics .trow { display: flex; align-items: baseline; gap: 7px; font-size: 11px; padding: 2px 4px; border-radius: 5px; }
+  #topics .trow.live { background: color-mix(in oklch, var(--info) 8%, transparent); }
+  #topics .trow .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--accent, var(--muted-fg)); align-self: center; }
+  #topics .trow .n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+  #topics .trow .hz { flex: none; width: 52px; text-align: right; color: var(--muted-fg); font-variant-numeric: tabular-nums; }
+  #topics .trow .hz b { color: var(--info); font-weight: 600; }
+  #topics .trow .tp { flex: none; width: 62px; text-align: right; color: var(--muted-fg); font-variant-numeric: tabular-nums; }
+  #topics .trow.idle .hz, #topics .trow.idle .tp { opacity: .5; }
+  #topics .empty { color: var(--muted-fg); font-size: 11px; padding: 4px; }
 
   /* dtop (per-worker CPU/RAM) kept as an opt-in side panel; toggle with D */
   #dtop { top: 12px; right: 12px; width: 264px; z-index: 6; padding: 0; display: none; }
@@ -192,6 +216,32 @@ limitations under the License.
   #hint { position: fixed; inset: 0; z-index: 4; display: flex; align-items: center; justify-content: center;
     pointer-events: none; color: var(--muted-fg); font-size: 13px; letter-spacing: .5px; }
   #hint.hide { display: none; }
+
+  /* narrow / phone widths: keep the top bars to single scrollable rows (so their
+     heights stay predictable) and drop the topics table into a full-width bottom
+     sheet instead of a fixed side panel that would overlap the graph. */
+  @media (max-width: 1040px) {
+    #help { font-size: 9px; letter-spacing: 0.5px; max-width: 46vw; }
+    #legend { gap: 10px 14px; max-width: 44vw; }
+  }
+  /* below ~900px the (left) toolbar grows wide enough to collide with the
+     top-right dtop panel — drop dtop below the toolbar + layout-picker rows. */
+  @media (max-width: 900px) {
+    #dtop { top: 108px; }
+  }
+  @media (max-width: 760px) {
+    #toolbar { max-width: calc(100vw - 24px); overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    #toolbar > * { flex: none; white-space: nowrap; }
+    #layouts { max-width: calc(100vw - 24px); overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    #topics { top: auto; bottom: 12px; left: 12px; right: 12px; width: auto; max-height: 42vh; }
+    #dtop { width: calc(100vw - 24px); max-width: 264px; }
+    #help, #legend { display: none; }
+  }
+  @media (max-width: 460px) {
+    #toolbar { gap: 10px; padding: 7px 11px; font-size: 10px; }
+    #toolbar .logo span { display: none; }
+    #topics { max-height: 46vh; }
+  }
 </style>
 </head>
 <body class="science">
@@ -226,14 +276,19 @@ limitations under the License.
   <span class="k"><span class="sw top"></span> topic</span>
 </div>
 
-<div class="bar" id="dtop">
+<div class="bar" id="topics">
+  <h2 id="topics-head"><span class="thd"><span class="caret">▾</span> TOPICS · RATE</span> <span id="topics-count">0</span></h2>
+  <div class="body" id="topics-body"></div>
+</div>
+
+<div class="bar show" id="dtop">
   <h2>WORKERS · CPU/RAM <span id="dtop-status">○ no stream</span></h2>
   <div class="body" id="dtop-body"></div>
 </div>
 
 <div class="bar" id="card"></div>
 
-<div id="help">DRAG pan · SCROLL zoom · HOVER module for card · CLICK pin · G cycle layout · D workers · L theme</div>
+<div id="help">DRAG pan · SCROLL zoom · HOVER module for card · CLICK pin · G cycle layout · T topics · D workers · L theme</div>
 
 <script type="module">
 import { DimAppFrontend } from "https://esm.sh/gh/jeff-hykin/dim-app@v0.3.0/frontend.js";
@@ -345,7 +400,7 @@ const moduleInfo = new Map();      // module node id -> blueprint card payload
 let currentBlueprint = "";
 function resetGraph() {
   for (const n of nodes.values()) n.el?.remove();
-  for (const e of edges) { e.el?.remove(); e.lab?.remove(); }
+  for (const e of edges) { e.el?.remove(); }
   nodes.clear(); edges.length = 0; edgeIndex.clear(); routes.clear();
   topicBase.clear(); moduleInfo.clear();
   seedCount = 0; settledOnce = false; heat = 0;
@@ -358,6 +413,11 @@ function resetGraph() {
 // fans in from every same-named duplicate. The spy animates these edges after.
 function applyGraph(g) {
   if (g.blueprint !== currentBlueprint) { resetGraph(); currentBlueprint = g.blueprint; }
+  if (g.unknown) {
+    hintEl.textContent = `${g.blueprint} is running — add its dimos dir to the desktop to see modules`;
+  } else if (!g.blueprint) {
+    hintEl.textContent = "waiting for a running stack — start a blueprint to see modules light up";
+  }
   for (const [mid, info] of Object.entries(g.modules || {})) {
     const nodeId = "m:" + mid;
     ensureNode(nodeId, "module", info.label || mid);
@@ -634,15 +694,30 @@ const defs = svg.querySelector("defs");
 const hintEl = document.getElementById("hint");
 let view = { x: 0, y: 0, k: 1 };   // pan (x,y) + zoom (k)
 
-// markerUnits=userSpaceOnUse → arrows are a fixed world size (don't vanish on
-// thin edges, and pan/zoom with the graph rather than scaling with stroke width).
+// markerUnits=userSpaceOnUse → arrows are a fixed WORLD size, so on their own
+// they'd shrink with the graph and vanish when a layout zooms far out. We counter
+// this in syncMarkerScale(): the marker size is rescaled by 1/view.k so arrowheads
+// stay a roughly constant on-screen size at every zoom level. refX/refY are in the
+// viewBox (0–10) coordinate space, so they stay correct regardless of size.
+const ARROW_SCREEN_PX = 3.6, ARROWMID_SCREEN_PX = 4;
 defs.innerHTML = `
-  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
-    <path d="M0 0.5 L10 5 L0 9.5 z" fill="currentColor"/>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="${ARROW_SCREEN_PX}" markerHeight="${ARROW_SCREEN_PX}" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+    <path d="M0 0.5 L10 5 L0 9.5 z" fill="context-stroke"/>
   </marker>
-  <marker id="arrowmid" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="20" markerHeight="20" markerUnits="userSpaceOnUse" orient="auto">
-    <path d="M0 0.5 L10 5 L0 9.5 z" fill="currentColor"/>
+  <marker id="arrowmid" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="${ARROWMID_SCREEN_PX}" markerHeight="${ARROWMID_SCREEN_PX}" markerUnits="userSpaceOnUse" orient="auto">
+    <path d="M0 0.5 L10 5 L0 9.5 z" fill="context-stroke"/>
   </marker>`;
+const arrowMarker = defs.querySelector("#arrow");
+const arrowMidMarker = defs.querySelector("#arrowmid");
+function syncMarkerScale() {
+  const inv = 1 / Math.max(0.05, view.k);
+  const a = (ARROW_SCREEN_PX * inv).toFixed(1);
+  const m = (ARROWMID_SCREEN_PX * inv).toFixed(1);
+  arrowMarker.setAttribute("markerWidth", a);
+  arrowMarker.setAttribute("markerHeight", a);
+  arrowMidMarker.setAttribute("markerWidth", m);
+  arrowMidMarker.setAttribute("markerHeight", m);
+}
 
 function isOrphan(topicId) {
   const r = routes.get(topicId);
@@ -659,14 +734,14 @@ function buildDom() {
     if (n.kind === "module") {
       el.innerHTML =
         `<div class="head"><span class="kind">MOD</span>` +
-        `<span class="name"></span><span class="rate"></span><span class="chev">▶</span></div>` +
+        `<span class="name"></span><span class="chev">▶</span></div>` +
         `<div class="body"></div>` +
         `<span class="handle l"></span><span class="handle r"></span>`;
       el.querySelector(".name").textContent = n.label;
     } else {
       if (isOrphan(n.id)) el.classList.add("orphan");
       el.innerHTML =
-        `<span class="name"></span><span class="type"></span>` +
+        `<span class="name"></span><span class="rate"></span><span class="type"></span>` +
         `<span class="handle l"></span><span class="handle r"></span>`;
       el.querySelector(".name").textContent = n.label;
       el.querySelector(".type").textContent = n.msgType || (n.transport || "").toUpperCase() || "";
@@ -685,11 +760,6 @@ function buildDom() {
     if (e.directed) { p.setAttribute("marker-mid", "url(#arrowmid)"); p.setAttribute("marker-end", "url(#arrow)"); }
     svg.appendChild(p);
     e.el = p;
-    const lab = document.createElement("div");
-    lab.className = "elabel";
-    lab.style.setProperty("--accent", accentColor(e));
-    viewport.appendChild(lab);
-    e.lab = lab;
   }
   positionAll();
   hintEl.classList.toggle("hide", nodes.size > 0);
@@ -754,12 +824,10 @@ function positionEdge(e) {
         ` ${pts[i + 2].x.toFixed(1)} ${pts[i + 2].y.toFixed(1)}`;
     }
     e.el.setAttribute("d", d);
-    if (e.lab) { const mid = pts[Math.floor(pts.length / 2)]; e.lab.style.left = mid.x + "px"; e.lab.style.top = mid.y + "px"; }
     return;
   }
   const g = edgeGeom(e);
   e.el.setAttribute("d", g.d);
-  if (e.lab) { e.lab.style.left = g.mid.x + "px"; e.lab.style.top = g.mid.y + "px"; }
 }
 function positionAll() { for (const n of nodes.values()) positionNode(n); for (const e of edges) positionEdge(e); sizeSvg(); }
 function edgesOf(n) { return edges.filter((e) => e.from === n.id || e.to === n.id); }
@@ -782,6 +850,7 @@ function applyView() {
   const s = 22 * view.k;
   flow.style.backgroundSize = `${s}px ${s}px`;
   flow.style.backgroundPosition = `${view.x}px ${view.y}px`;
+  syncMarkerScale();
 }
 function fitView() {
   if (!nodes.size) return;
@@ -982,6 +1051,12 @@ function human(bytes) {
   while (bytes >= 1024 && i < u.length - 1) { bytes /= 1024; i++; }
   return bytes.toFixed(i ? 1 : 0) + " " + u[i];
 }
+// network throughput from bytes/sec → bits/sec (bps/Kbps/Mbps/Gbps, decimal 1000s)
+function humanBits(bytesPerSec) {
+  let bits = bytesPerSec * 8; const u = ["bps", "Kbps", "Mbps", "Gbps"]; let i = 0;
+  while (bits >= 1000 && i < u.length - 1) { bits /= 1000; i++; }
+  return bits.toFixed(bits >= 100 || i === 0 ? 0 : 1) + " " + u[i];
+}
 
 // ─────────────────────────────────────────────────────────── app-bus feed ──
 const connEl = document.getElementById("conn");
@@ -1025,7 +1100,6 @@ function refreshEdges() {
     e.el.style.stroke = hot ? accentColor(e) : rest;
     e.el.style.strokeWidth = (on ? base + 1.1 : lit ? base + 0.6 : base).toFixed(1);
     e.el.style.strokeDasharray = lit ? "5 6" : "none";
-    if (e.lab) e.lab.classList.toggle("show", hot);
   }
 }
 function animate() {
@@ -1063,26 +1137,37 @@ setInterval(() => {
   document.getElementById("r-rate").innerHTML = `<b>${(wm / 5).toFixed(1)}</b> Hz · <b>${human(wb / 5)}</b>/s`;
 
   const stats = topicWindowStats();
-  const perModule = new Map(mods.map((m) => [m.id, 0]));
-  for (const [topic, route] of routes) {
-    const s = stats.get(topic); if (!s) continue;
-    for (const id of [...route.pubs, ...route.subs]) if (perModule.has(id)) perModule.set(id, perModule.get(id) + s.hz);
-  }
-  for (const m of mods) {
-    const hz = perModule.get(m.id) || 0;
-    m.el.querySelector(".rate").innerHTML = hz > 0.05 ? `<b>${hz.toFixed(1)}</b> Hz` : "";
+  // rates belong to topics, not modules — show each topic's live Hz on its node
+  for (const t of tops) {
+    if (!t.el) continue;
+    const s = stats.get(t.id);
+    const rateEl = t.el.querySelector(".rate");
+    if (rateEl) rateEl.innerHTML = s && s.hz > 0.05 ? `<b>${s.hz.toFixed(1)}</b> Hz` : "";
   }
   if (cardNode && cardEl.classList.contains("show")) { cardEl.innerHTML = moduleCardHtml(cardNode); positionCard(cardNode); }
-  for (const e of edges) {
-    if (!e.lab) continue;
-    const s = stats.get(e.channel);
-    e.lab.innerHTML = s && s.hz > 0.05
-      ? `<b>${s.hz.toFixed(1)}</b> Hz`
-      : channelType(e.channel).base.split("/").filter(Boolean).pop() || e.channel;
-  }
+  renderTopics(tops, stats);
   refreshEdges();
   renderDtop();
 }, 400);
+
+// ─────────────────────────────────────────────────────────────── topics ──
+function renderTopics(tops, stats) {
+  const panel = document.getElementById("topics");
+  if (panel.classList.contains("hide")) return;
+  document.getElementById("topics-count").textContent = tops.length;
+  const rows = tops.map((t) => {
+    const s = stats.get(t.id);
+    return { label: t.label, accent: t.accent, hz: s ? s.hz : 0, bps: s ? s.bps : 0, live: !!(s && s.hz > 0.05) };
+  }).sort((a, b) => (b.bps - a.bps) || (b.hz - a.hz) || a.label.localeCompare(b.label));
+  const body = document.getElementById("topics-body");
+  body.innerHTML = rows.length
+    ? rows.map((r) =>
+        `<div class="trow ${r.live ? "live" : "idle"}" style="--accent:var(${r.accent})">` +
+        `<span class="dot"></span><span class="n">${escapeHtml(r.label)}</span>` +
+        `<span class="hz">${r.live ? `<b>${r.hz.toFixed(1)}</b> Hz` : "—"}</span>` +
+        `<span class="tp">${r.live ? humanBits(r.bps) : "—"}</span></div>`).join("")
+    : '<div class="empty">no topics — start a blueprint</div>';
+}
 
 // ───────────────────────────────────────────────────────────────── dtop ──
 function renderDtop() {
@@ -1103,9 +1188,14 @@ function renderDtop() {
 }
 
 // ─────────────────────────────────────────────────────────── keyboard ──
+document.getElementById("topics-head").addEventListener("click", () => {
+  document.getElementById("topics").classList.toggle("collapsed");
+});
+
 addEventListener("keydown", (ev) => {
   if (ev.key === " ") { paused = !paused; ev.preventDefault(); }
   if (ev.key === "d") document.getElementById("dtop").classList.toggle("show");
+  if (ev.key === "t") document.getElementById("topics").classList.toggle("hide");
   if (ev.key === "l") document.body.classList.toggle("dark");
   if (ev.key === "f" || ev.key === "0") fitView();
   if (ev.key === "g") cycleLayout(1);
