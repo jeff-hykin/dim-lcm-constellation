@@ -141,8 +141,47 @@ fn lcm_loop(agg: Agg) -> std::io::Result<()> {
     }
 }
 
+// Stable per-machine identifier, used as the Zenoh usrpwd password.
+//   - Linux: /etc/machine-id
+//   - macOS: IOPlatformUUID from ioreg (lowercased)
+fn machine_id() -> Option<String> {
+    #[cfg(target_os = "linux")]
+    {
+        std::fs::read_to_string("/etc/machine-id")
+            .ok()
+            .map(|text| text.trim().to_string())
+            .filter(|text| !text.is_empty())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let output = std::process::Command::new("ioreg")
+            .args(["-rd1", "-c", "IOPlatformExpertDevice"])
+            .output()
+            .ok()?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let parts: Vec<&str> = stdout.split('"').collect();
+        let index = parts.iter().position(|&part| part == "IOPlatformUUID")?;
+        parts.get(index + 2).map(|uuid| uuid.to_lowercase())
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        None
+    }
+}
+
 async fn start_zenoh(agg: Agg) -> Option<zenoh::Session> {
-    let session = match zenoh::open(zenoh::Config::default()).await {
+    let mut config = zenoh::Config::default();
+    match machine_id() {
+        Some(password) => {
+            let _ = config.insert_json5("transport/auth/usrpwd/user", "\"dimos\"");
+            let _ = config.insert_json5(
+                "transport/auth/usrpwd/password",
+                &serde_json::Value::String(password).to_string(),
+            );
+        }
+        None => eprintln!("spy: could not resolve machine-id; zenoh usrpwd auth disabled"),
+    }
+    let session = match zenoh::open(config).await {
         Ok(session) => session,
         Err(err) => {
             eprintln!("spy: zenoh open failed (continuing LCM-only): {err}");
