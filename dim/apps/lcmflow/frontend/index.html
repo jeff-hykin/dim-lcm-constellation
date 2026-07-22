@@ -285,7 +285,7 @@ limitations under the License.
   }
 </style>
 </head>
-<body class="science">
+<body class="science dark">
 
 <div id="flow">
   <div id="viewport">
@@ -336,7 +336,7 @@ limitations under the License.
 
 <div class="bar" id="card"></div>
 
-<div id="help">DRAG pan · SCROLL zoom · HOVER module for card · CLICK pin · G cycle layout · T topics · D workers · L theme</div>
+<div id="help">DRAG pan · SCROLL zoom · HOVER module for card · CLICK pin · G cycle layout · T topics · D workers</div>
 
 <script type="module">
 import { DimAppFrontend } from "https://esm.sh/gh/jeff-hykin/dim-app@v0.3.0/frontend.js";
@@ -1386,18 +1386,10 @@ addEventListener("keydown", (ev) => {
   if (ev.key === " ") { paused = !paused; ev.preventDefault(); }
   if (ev.key === "d") document.getElementById("dtop").classList.toggle("show");
   if (ev.key === "t") document.getElementById("topics").classList.toggle("hide");
-  if (ev.key === "l") document.body.classList.toggle("dark");
   if (ev.key === "f" || ev.key === "0") fitView();
   if (ev.key === "g") cycleLayout(1);
   if (ev.key === "G") cycleLayout(-1);
 });
-
-// follow OS light/dark (same pattern as the rest of the desktop)
-(function () {
-  const mq = matchMedia("(prefers-color-scheme: light)");
-  const apply = () => document.body.classList.toggle("dark", !mq.matches);
-  apply(); mq.addEventListener("change", apply);
-})();
 
 applyView();
 addEventListener("resize", applyView);
