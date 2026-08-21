@@ -84,6 +84,7 @@ limitations under the License.
   .node.topic .rate { font-size: 9px; color: var(--muted-fg); white-space: nowrap; line-height: 1.2; }
   .node.topic .rate:empty { display: none; }
   .node.topic .rate b { color: var(--accent, var(--info)); font-weight: 600; }
+  .node.topic .rate .ago { opacity: .75; }
   .node.topic .type { display: none; font-size: 8px; letter-spacing: .5px; color: var(--accent, var(--info)); white-space: nowrap; line-height: 1.2; }
   .node.topic:hover .type, .node.topic.hi .type { display: block; }
   /* nobody subscribes → gray it out (override the type accent) */
@@ -101,8 +102,13 @@ limitations under the License.
   .handle.l { left: -4px; } .handle.r { right: -4px; }
   .node.hi .handle { border-color: var(--accent, var(--info)); }
 
-  /* edge labels are permanently hidden — rates live on the topic nodes + topics table */
-  .elabel { display: none; }
+  /* the only edge label: a blueprint `.remappings(...)` rename. The topic node
+     carries the wire name, so the edge shows the module's *declared* stream name. */
+  .elabel { position: absolute; transform: translate(-50%, -50%); pointer-events: none;
+    z-index: 1; font-size: 9px; letter-spacing: .3px; white-space: nowrap;
+    padding: 1px 5px; border-radius: 999px; color: var(--muted-fg);
+    background: color-mix(in oklch, var(--bg) 85%, transparent);
+    border: 1px dashed color-mix(in oklch, var(--muted-fg) 40%, var(--border)); }
 
   /* ── chrome: toolbar, controls, legend ────────────────────────────────── */
   .bar { position: fixed; z-index: 6; background: color-mix(in oklch, var(--card) 90%, transparent);
@@ -146,7 +152,7 @@ limitations under the License.
     max-width: 52vw; text-align: right; line-height: 1.5; }
 
   /* topics table — sortable list of every topic + live rate; toggle with T */
-  #topics { top: 106px; left: 12px; width: 272px; z-index: 6; padding: 0; bottom: 54px; max-height: calc(100vh - 160px); display: flex; flex-direction: column; }
+  #topics { top: 106px; left: 12px; width: 272px; z-index: 6; padding: 0; bottom: 120px; max-height: calc(100vh - 226px); display: flex; flex-direction: column; }
   #topics.hide { display: none; }
   #topics.collapsed { bottom: auto; max-height: none; }
   #topics.collapsed .body, #topics.collapsed .thead { display: none; }
@@ -154,7 +160,7 @@ limitations under the License.
     letter-spacing: 1px; color: var(--muted-fg); border-bottom: 1px solid var(--border); }
   #topics .thead .sp { flex: none; width: 6px; }
   #topics .thead .n { flex: 1 1 auto; min-width: 0; }
-  #topics .thead .hz { flex: none; width: 52px; text-align: right; }
+  #topics .thead .hz { flex: none; width: 62px; text-align: right; }
   #topics .thead .tp { flex: none; width: 62px; text-align: right; }
   #topics .thead .sortkey { cursor: pointer; user-select: none; }
   #topics .thead .sortkey:hover { color: var(--fg); }
@@ -174,8 +180,9 @@ limitations under the License.
   #topics .trow.live { background: color-mix(in oklch, var(--info) 8%, transparent); }
   #topics .trow .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--accent, var(--muted-fg)); align-self: center; }
   #topics .trow .n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
-  #topics .trow .hz { flex: none; width: 52px; text-align: right; color: var(--muted-fg); font-variant-numeric: tabular-nums; }
+  #topics .trow .hz { flex: none; width: 62px; text-align: right; color: var(--muted-fg); font-variant-numeric: tabular-nums; }
   #topics .trow .hz b { color: var(--info); font-weight: 600; }
+  #topics .trow .hz .ago { font-size: 9.5px; letter-spacing: -.2px; }
   #topics .trow .tp { flex: none; width: 62px; text-align: right; color: var(--muted-fg); font-variant-numeric: tabular-nums; }
   #topics .trow.idle .hz, #topics .trow.idle .tp { opacity: .5; }
   #topics .empty { color: var(--muted-fg); font-size: 11px; padding: 4px; }
@@ -248,6 +255,8 @@ limitations under the License.
     color: color-mix(in oklch, var(--fg) 68%, var(--muted-fg)); }
   #card .chip .ty { color: var(--accent, var(--info)); }
   #card .chip .rt { color: var(--info); font-weight: 600; margin-left: 3px; }
+  #card .chip .rt.idle { color: var(--muted-fg); font-weight: 400; }
+  #card .chip .rmp { color: var(--muted-fg); }
   #card .chip.out { --accent: var(--warn); } #card .chip.in { --accent: var(--ok); }
   #card .mrow { font-size: 10px; color: color-mix(in oklch, var(--fg) 60%, var(--muted-fg));
     padding: 1px 0; font-family: ui-monospace, SFMono-Regular, monospace; }
@@ -414,10 +423,10 @@ function ensureNode(id, kind, label, transport) {
   return n;
 }
 
-function addEdge(fromId, toId, channel, directed) {
+function addEdge(fromId, toId, channel, directed, declared) {
   const key = fromId + "|" + toId;
   let e = edgeIndex.get(key);
-  if (!e) { e = { from: fromId, to: toId, channel, directed, el: null, lab: null, active: 0 }; edges.push(e); edgeIndex.set(key, e); dirty = true; }
+  if (!e) { e = { from: fromId, to: toId, channel, directed, declared: declared || null, el: null, lab: null, active: 0 }; edges.push(e); edgeIndex.set(key, e); dirty = true; }
   return e;
 }
 
@@ -448,7 +457,7 @@ const moduleInfo = new Map();      // module node id -> blueprint card payload
 let currentBlueprint = "";
 function resetGraph() {
   for (const n of nodes.values()) n.el?.remove();
-  for (const e of edges) { e.el?.remove(); }
+  for (const e of edges) { e.el?.remove(); e.lab?.remove(); }
   nodes.clear(); edges.length = 0; edgeIndex.clear(); routes.clear();
   topicBase.clear(); moduleInfo.clear();
   seedCount = 0; settledOnce = false; heat = 0;
@@ -479,9 +488,9 @@ function applyGraph(g) {
     const modId = "m:" + t.module;
     if (!nodes.has(modId)) ensureNode(modId, "module", g.modules?.[t.module]?.label || t.module);
     if (t.direction === "in") {
-      (subsByTopic.get(t.topic) || subsByTopic.set(t.topic, []).get(t.topic)).push(modId);
+      (subsByTopic.get(t.topic) || subsByTopic.set(t.topic, []).get(t.topic)).push({ modId, declared: t.declared });
     } else {
-      (pubsByTopic.get(t.topic) || pubsByTopic.set(t.topic, []).get(t.topic)).push({ modId, type: t.type });
+      (pubsByTopic.get(t.topic) || pubsByTopic.set(t.topic, []).get(t.topic)).push({ modId, type: t.type, declared: t.declared });
     }
   }
   // Pass 2: one topic node per publisher instance; each subscriber connects to
@@ -497,8 +506,8 @@ function applyGraph(g) {
       hub.msgType = (pub.type || "").split(".").pop();
       hub.accent = accentForType(pub.type, name);
       const route = { pubs: new Set(), subs: new Set() };
-      if (pub.modId) { route.pubs.add(pub.modId); addEdge(pub.modId, topicId, name, true); }
-      for (const subId of subs) { route.subs.add(subId); addEdge(topicId, subId, name, true); }
+      if (pub.modId) { route.pubs.add(pub.modId); addEdge(pub.modId, topicId, name, true, pub.declared); }
+      for (const sub of subs) { route.subs.add(sub.modId); addEdge(topicId, sub.modId, name, true, sub.declared); }
       routes.set(topicId, route);
       (topicBase.get(normBase(name)) || topicBase.set(normBase(name), []).get(normBase(name))).push(topicId);
     });
@@ -799,6 +808,15 @@ function buildDom() {
     if (e.directed) { p.setAttribute("marker-mid", "url(#arrowmid)"); p.setAttribute("marker-end", "url(#arrow)"); }
     svg.appendChild(p);
     e.el = p;
+    if (e.declared) {
+      // the rename reads along the flow: `twist_command ↦` leaving a module,
+      // `↦ twist_command` arriving at one (the topic node shows the wire name)
+      const lab = document.createElement("div");
+      lab.className = "elabel";
+      lab.textContent = nodes.get(e.from)?.kind === "module" ? `${e.declared} ↦` : `↦ ${e.declared}`;
+      viewport.appendChild(lab);
+      e.lab = lab;
+    }
   }
   positionAll();
   hintEl.classList.toggle("hide", nodes.size > 0);
@@ -863,10 +881,17 @@ function positionEdge(e) {
         ` ${pts[i + 2].x.toFixed(1)} ${pts[i + 2].y.toFixed(1)}`;
     }
     e.el.setAttribute("d", d);
+    placeEdgeLabel(e, pts[Math.floor(pts.length / 2)]);
     return;
   }
   const g = edgeGeom(e);
   e.el.setAttribute("d", g.d);
+  placeEdgeLabel(e, g.mid);
+}
+function placeEdgeLabel(e, p) {
+  if (!e.lab || !p) return;
+  e.lab.style.left = p.x.toFixed(1) + "px";
+  e.lab.style.top = p.y.toFixed(1) + "px";
 }
 function positionAll() { for (const n of nodes.values()) positionNode(n); for (const e of edges) positionEdge(e); sizeSvg(); }
 function edgesOf(n) { return edges.filter((e) => e.from === n.id || e.to === n.id); }
@@ -1019,10 +1044,23 @@ function moduleCardHtml(n) {
     `<span class="pin">${cardPinned && cardNode === n ? "📌" : ""}</span></div>`;
   if (!info) return head + `<div class="cbody"><span class="none">no blueprint metadata</span></div>`;
   const stats = topicWindowStats();
-  const rate = (name) => { const s = stats.get(name); return s && s.hz > 0.05 ? `<span class="rt">${s.hz.toFixed(1)}Hz</span>` : ""; };
+  // stats are keyed by topic *node* id (one per publisher instance), so resolve a
+  // stream through the channel it actually rides — its remapped wire name.
+  const rate = (s) => {
+    let hz = 0, lastAt = 0;
+    for (const id of topicBase.get(normBase(s.wire || s.name)) || []) {
+      const st = stats.get(id);
+      if (!st) continue;
+      hz = Math.max(hz, st.hz); lastAt = Math.max(lastAt, st.lastAt);
+    }
+    if (hz > 0.05) return `<span class="rt">${hz.toFixed(1)}Hz</span>`;
+    return lastAt ? `<span class="rt idle">${agoText(performance.now() - lastAt)}</span>` : "";
+  };
   const chips = (arr, cls) => arr.length
     ? `<div class="chips">` + arr.map((s) =>
-        `<span class="chip ${cls}">${escapeHtml(s.name)}<span class="ty">: ${escapeHtml((s.type || "?").split(".").pop())}</span>${rate(s.name)}</span>`).join("") + `</div>`
+        `<span class="chip ${cls}">${escapeHtml(s.name)}` +
+        `${s.wire ? `<span class="rmp"> ↦ ${escapeHtml(s.wire)}</span>` : ""}` +
+        `<span class="ty">: ${escapeHtml((s.type || "?").split(".").pop())}</span>${rate(s)}</span>`).join("") + `</div>`
     : `<span class="none">none</span>`;
   const methods = (arr) => arr.length
     ? arr.map((f) => `<div class="mrow">${escapeHtml(f.name)}(${(f.params || []).map((p) => escapeHtml(p.name)).join(", ")})` +
@@ -1077,17 +1115,19 @@ function noteTraffic(channel, count, bytes, transport) {
   totalMsgs += count; totalBytes += bytes; lastPacketAt = performance.now();
   windowEvents.push([lastPacketAt, count, bytes]);
   let t = perTopic.get(channel);
-  if (!t) { t = { win: [], transport: transport || "" }; perTopic.set(channel, t); }
+  if (!t) { t = { win: [], transport: transport || "", count: 0, lastAt: 0 }; perTopic.set(channel, t); }
   if (transport && !t.transport) t.transport = transport;
   t.win.push([lastPacketAt, count, bytes]);
+  t.count += count; t.lastAt = lastPacketAt;
   const hub = nodes.get(channel);
   if (hub) { hub.active = 1; hub.lastTraffic = lastPacketAt; for (const e of edgesOf(hub)) e.active = 1; }
 }
 // Floating "recent activity" topics: channels seen live but absent from the
 // blueprint (e.g. a rarely-fired cancel_goal) get their own topic node so they
 // show up on the graph, and are swept away RECENT_TOPIC_MS after their last
-// packet. Blueprint topics are never swept — they just go idle.
-const RECENT_TOPIC_MS = 5 * 60 * 1000;
+// packet. Blueprint topics are never swept — they just go idle. The window is
+// long because a rare topic now advertises its age instead of reading as dead.
+const RECENT_TOPIC_MS = 30 * 60 * 1000;
 function ensureDynamicTopic(base, transport) {
   const nodeId = "dyn:" + base;
   const hub = ensureNode(nodeId, "topic", base, transport);
@@ -1116,9 +1156,18 @@ function topicWindowStats() {
     rollWindow(t.win, now);
     let m = 0, b = 0;
     for (const [, c, bb] of t.win) { m += c; b += bb; }
-    out.set(ch, { hz: m / 5, bps: b / 5 });
+    out.set(ch, { hz: m / 5, bps: b / 5, count: t.count, lastAt: t.lastAt });
   }
   return out;
+}
+// A rare topic (clicked_point, cancel_goal) reads 0 Hz on a 5s window, so instead
+// of a blank we report how long ago its last message landed.
+function agoText(msAgo) {
+  const s = msAgo / 1000;
+  if (s < 1.5) return "just now";
+  if (s < 60) return `${Math.round(s)}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  return `${(s / 3600).toFixed(s < 36000 ? 1 : 0)}h ago`;
 }
 function human(bytes) {
   const u = ["B", "KiB", "MiB", "GiB"]; let i = 0;
@@ -1158,7 +1207,7 @@ dimApp.receiveRequest((tag, msg) => {
 });
 // Live traffic animates the blueprint graph: match each channel to a topic node
 // by normalized name. Channels with no blueprint node get a floating "recent
-// activity" node (swept after 5min idle) so late/rare topics still appear.
+// activity" node (swept after RECENT_TOPIC_MS idle) so late/rare topics still appear.
 function handlePackets(events) {
   for (const ev of events || []) {
     const [transport, channel, count, bytes] = ev;
@@ -1191,6 +1240,10 @@ function refreshEdges() {
     e.el.style.stroke = hot ? accentColor(e) : rest;
     e.el.style.strokeWidth = (on ? base + 1.1 : lit ? base + 0.6 : base).toFixed(1);
     e.el.style.strokeDasharray = lit ? "5 6" : "none";
+    if (e.lab) {
+      e.lab.style.color = hot ? accentColor(e) : "var(--muted-fg)";
+      e.lab.style.borderColor = hot ? accentColor(e) : rest;
+    }
   }
 }
 function animate() {
@@ -1237,7 +1290,10 @@ setInterval(() => {
     if (!t.el) continue;
     const s = stats.get(t.id);
     const rateEl = t.el.querySelector(".rate");
-    if (rateEl) rateEl.innerHTML = s && s.hz > 0.05 ? `<b>${s.hz.toFixed(1)}</b> Hz` : "";
+    if (!rateEl) continue;
+    if (s && s.hz > 0.05) rateEl.innerHTML = `<b>${s.hz.toFixed(1)}</b> Hz`;
+    else if (s && s.lastAt) rateEl.innerHTML = `<span class="ago">${agoText(now - s.lastAt)}</span>`;
+    else rateEl.innerHTML = "";
   }
   if (cardNode && cardEl.classList.contains("show")) { cardEl.innerHTML = moduleCardHtml(cardNode); positionCard(cardNode); }
   renderTopics(tops, stats);
@@ -1264,12 +1320,24 @@ function renderTopics(tops, stats) {
   const panel = document.getElementById("topics");
   if (panel.classList.contains("hide")) return;
   document.getElementById("topics-count").textContent = tops.length;
+  const now = performance.now();
   const rows = tops.map((t) => {
     const s = stats.get(t.id);
-    return { label: t.label, accent: t.accent, hz: s ? s.hz : 0, bps: s ? s.bps : 0, live: !!(s && s.hz > 0.05) };
-  }).sort((a, b) => topicSort === "hz"
-    ? (b.hz - a.hz) || (b.bps - a.bps) || a.label.localeCompare(b.label)
-    : (b.bps - a.bps) || (b.hz - a.hz) || a.label.localeCompare(b.label));
+    return {
+      label: t.label, accent: t.accent,
+      hz: s ? s.hz : 0, bps: s ? s.bps : 0,
+      lastAt: s ? s.lastAt : 0, count: s ? s.count : 0,
+      live: !!(s && s.hz > 0.05),
+    };
+  // idle topics sort by recency (a rare topic that just fired sits at the top of
+  // the idle block) and never-seen ones sink to the bottom
+  }).sort((a, b) => {
+    if (a.live !== b.live) return a.live ? -1 : 1;
+    if (!a.live) return (b.lastAt - a.lastAt) || a.label.localeCompare(b.label);
+    return topicSort === "hz"
+      ? (b.hz - a.hz) || (b.bps - a.bps) || a.label.localeCompare(b.label)
+      : (b.bps - a.bps) || (b.hz - a.hz) || a.label.localeCompare(b.label);
+  });
   const maxHz = Math.max(0, ...rows.filter((r) => r.live).map((r) => r.hz));
   const maxBps = Math.max(0, ...rows.filter((r) => r.live).map((r) => r.bps));
   const body = document.getElementById("topics-body");
@@ -1277,9 +1345,11 @@ function renderTopics(tops, stats) {
     ? rows.map((r) => {
         const hzCol = heatColor(heatFracLog(r.hz, maxHz));
         const tpCol = heatColor(heatFracLog(r.bps, maxBps));
-        return `<div class="trow ${r.live ? "live" : "idle"}" style="--accent:var(${r.accent})">` +
+        const idleHz = r.lastAt ? `<span class="ago">${agoText(now - r.lastAt)}</span>` : "—";
+        const tip = r.lastAt ? ` title="${r.count} msg${r.count === 1 ? "" : "s"} · last ${agoText(now - r.lastAt)}"` : "";
+        return `<div class="trow ${r.live ? "live" : "idle"}" style="--accent:var(${r.accent})"${tip}>` +
           `<span class="dot"></span><span class="n">${escapeHtml(r.label)}</span>` +
-          `<span class="hz">${r.live ? `<b style="color:${hzCol}">${r.hz.toFixed(1)}</b> Hz` : "—"}</span>` +
+          `<span class="hz">${r.live ? `<b style="color:${hzCol}">${r.hz.toFixed(1)}</b> Hz` : idleHz}</span>` +
           `<span class="tp"${r.live ? ` style="color:${tpCol}"` : ""}>${r.live ? humanBits(r.bps) : "—"}</span></div>`;
       }).join("")
     : '<div class="empty">no topics — start a blueprint</div>';
@@ -1292,7 +1362,11 @@ function renderDtop() {
   if (dtopData) {
     const add = (role, x, alive) => rows.push({ role, alive, cpu: x.cpu_percent || 0, mem: x.pss || 0, raw: x });
     if (dtopData.coordinator) add("coordinator", dtopData.coordinator, true);
-    for (const w of dtopData.workers || []) add(w.dedicated ? `worker ${w.worker_id ?? "?"} (ded)` : `worker ${w.worker_id ?? "?"}`, w, w.alive !== false);
+    for (const w of dtopData.workers || []) {
+      const mods = Array.isArray(w.modules) ? w.modules.filter(Boolean) : [];
+      const label = mods.length ? mods.join(", ") : `worker ${w.worker_id ?? "?"}`;
+      add(label, w, w.alive !== false);
+    }
   }
   dtopRows = rows;
   const live = dtopData && (Date.now() - dtopAt < 4000);
@@ -1329,8 +1403,8 @@ function dtopTipHtml(r) {
   const head = `<div class="th"><span class="role"${r.alive ? "" : ' style="opacity:.5"'}>${escapeHtml(r.role)}</span>` +
     `${x.alive === false ? `<span style="color:var(--warn);font-size:9px">dead</span>` : ""}` +
     `<span class="pid">pid ${x.pid ?? "—"}</span></div>`;
-  const mods = Array.isArray(x.modules) && x.modules.length
-    ? `<div class="mods">${escapeHtml(x.modules.join(", "))}</div>` : "";
+  const mods = x.worker_id != null
+    ? `<div class="mods">worker ${x.worker_id}${x.dedicated ? " · dedicated" : ""}</div>` : "";
   const stats = `<div class="kv">` +
     kv("CPU", `${(x.cpu_percent ?? 0).toFixed(0)}%`) +
     kv("PSS", human(x.pss ?? 0)) +
