@@ -110,28 +110,39 @@ function buildGraph(bp, info) {
     const modules = {}          // id -> card payload
     const edges = []            // { module, topic, type, direction }
     const seen = new Set()
-    const addEdge = (module, topic, type, direction) => {
+    const addEdge = (module, topic, type, direction, declared) => {
         const key = `${module}|${topic}|${direction}`
         if (seen.has(key)) return
         seen.add(key)
-        edges.push({ module, topic, type, direction })
+        edges.push({ module, topic, type, direction, declared: declared ?? null })
     }
     // A blueprint's `.remappings([(Module, declared, wire)])` renames a module's
     // stream to the channel it actually rides. Fuse on the wire name so a renamed
     // publisher joins its subscriber (and matches live spy traffic) — otherwise a
     // pub declared `twist_command` remapped to `cmd_vel` never meets `cmd_vel`.
-    const remap = new Map((bp.remappings ?? []).map((r) => [`${r.module}|${r.from}`, r.to]))
-    const wireName = (id, name) => remap.get(`${id}|${name}`) ?? name
+    // `Blueprint.remappings` keys by INSTANCE name, which defaults to the module's
+    // class name lowercased ("frontcamera"), while `bp.modules` lists registered
+    // ids ("front-camera"). Keying on the id misses every rename, so go through
+    // each module's class_name instead.
+    const instanceKey = (module, stream) => `${String(module).toLowerCase()}|${stream}`
+    const remap = new Map((bp.remappings ?? []).map((r) => [instanceKey(r.module, r.from), r.to]))
+    const wireName = (id, name) => remap.get(instanceKey(modsById.get(id)?.class_name ?? id, name)) ?? name
+    // a renamed stream keeps its declared name and gains `wire` — the frontend
+    // draws that pair on the edge so the rename is visible on the graph.
+    const withWire = (id, arr) => (arr ?? []).map((s) => {
+        const wire = wireName(id, s.name)
+        return wire === s.name ? s : { ...s, wire }
+    })
     for (const id of bp.modules) {
         const m = modsById.get(id)
         if (!m) continue
         modules[id] = {
             id, label: m.class_name ?? id, doc: m.doc ?? "",
-            inputs: m.inputs ?? [], outputs: m.outputs ?? [],
+            inputs: withWire(id, m.inputs), outputs: withWire(id, m.outputs),
             rpcs: m.rpcs ?? [], skills: m.skills ?? [],
         }
-        for (const s of m.outputs ?? []) addEdge(id, wireName(id, s.name), s.type ?? "", "out")
-        for (const s of m.inputs ?? []) addEdge(id, wireName(id, s.name), s.type ?? "", "in")
+        for (const s of modules[id].outputs) addEdge(id, s.wire ?? s.name, s.type ?? "", "out", s.wire ? s.name : null)
+        for (const s of modules[id].inputs) addEdge(id, s.wire ?? s.name, s.type ?? "", "in", s.wire ? s.name : null)
     }
     return { blueprint: bp.name, modules, edges }
 }
