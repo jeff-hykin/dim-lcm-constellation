@@ -1,0 +1,86 @@
+# Builds the `spy` binary for the three platforms dtk knows how to fetch, and
+# keeps a release tagged `latest` pointing at them, so
+# https://github.com/jeff-hykin/dim-lcm-constellation/releases/latest/download/spy-<platform>
+# is always the newest build of master.
+#
+# The linux builds target musl and come out static, so they need nothing on the
+# machine that runs them. Its dependencies are all pure Rust apart from ring's
+# C, which is what musl-tools is for.
+name: release
+
+on:
+    push:
+        branches: [master]
+    workflow_dispatch:
+
+permissions:
+    contents: write
+
+defaults:
+    run:
+        working-directory: dim/apps/lcmflow/spy
+
+jobs:
+    build:
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    # 22.04 rather than latest: a static musl binary does not care,
+                    # but the toolchain packages are the ones that have been tested.
+                    - runner: ubuntu-22.04
+                      target: x86_64-unknown-linux-musl
+                      asset: spy-x86_64-linux
+                    - runner: ubuntu-22.04-arm
+                      target: aarch64-unknown-linux-musl
+                      asset: spy-aarch64-linux
+                    - runner: macos-14
+                      target: aarch64-apple-darwin
+                      asset: spy-aarch64-macos
+        runs-on: ${{ matrix.runner }}
+        steps:
+            - uses: actions/checkout@v4
+            - uses: dtolnay/rust-toolchain@stable
+              with:
+                  targets: ${{ matrix.target }}
+            - name: musl toolchain
+              if: runner.os == 'Linux'
+              run: sudo apt-get update && sudo apt-get install -y musl-tools
+            - run: cargo build --release --locked --target ${{ matrix.target }}
+            - name: check it starts
+              # It sniffs the network forever, so "it starts and stays up for a
+              # second" is the most a build machine can say. Exit 0 either way;
+              # a binary that cannot even load would fail before the sleep.
+              if: matrix.target != 'aarch64-unknown-linux-musl'
+              run: |
+                  ./target/${{ matrix.target }}/release/spy &
+                  pid=$!
+                  sleep 2
+                  kill $pid 2>/dev/null || true
+                  echo "it ran"
+            - run: install -m755 target/${{ matrix.target }}/release/spy "${{ matrix.asset }}"
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: ${{ matrix.asset }}
+                  path: dim/apps/lcmflow/spy/${{ matrix.asset }}
+
+    release:
+        needs: build
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: .
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/download-artifact@v4
+              with:
+                  merge-multiple: true
+                  path: dist
+            - name: publish the `latest` release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  gh release delete latest --yes --cleanup-tag || true
+                  gh release create latest dist/* \
+                      --title "latest" \
+                      --notes "Built from ${{ github.sha }}"
