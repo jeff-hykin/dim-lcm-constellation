@@ -1,4 +1,4 @@
-# Builds the `spy` binary for the three platforms dtk knows how to fetch, and
+# Builds the `spy` binary for the four platforms dtk and the app know how to fetch, and
 # keeps a release tagged `latest` pointing at them, so
 # https://github.com/jeff-hykin/dim-lcm-constellation/releases/latest/download/spy-<platform>
 # is always the newest build of master.
@@ -37,6 +37,11 @@ jobs:
                     - runner: macos-14
                       target: aarch64-apple-darwin
                       asset: spy-aarch64-macos
+                    # Intel mac, cross-compiled on the arm runner (GitHub has no
+                    # Intel mac runners left); Apple's clang links both arches.
+                    - runner: macos-14
+                      target: x86_64-apple-darwin
+                      asset: spy-x86_64-macos
         runs-on: ${{ matrix.runner }}
         steps:
             - uses: actions/checkout@v4
@@ -51,7 +56,9 @@ jobs:
               # It sniffs the network forever, so "it starts and stays up for a
               # second" is the most a build machine can say. Exit 0 either way;
               # a binary that cannot even load would fail before the sleep.
-              if: matrix.target != 'aarch64-unknown-linux-musl'
+              # Skipped where the runner can't execute the target (aarch64 linux
+              # on x86, x86_64 mac on arm without Rosetta).
+              if: matrix.target != 'aarch64-unknown-linux-musl' && matrix.target != 'x86_64-apple-darwin'
               run: |
                   ./target/${{ matrix.target }}/release/spy &
                   pid=$!

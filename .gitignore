@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 .DS_Store
 .ruff_cache/
+# prebuilt spy fetched at first run (see lcmflow/main.js)
+dim/apps/lcmflow/spy/bin/
