@@ -1,13 +1,7 @@
-name: dim-lcm-constellation
-install: nix run .#install
-apps:
-    - name: lcmflow
-      title: LCM Constellation
-      icon: dim/apps/lcmflow/frontend/icon.svg
-      frontend: dim/apps/lcmflow/frontend
-      backend:
-          dim_app: dim/apps/lcmflow/main.js
-requires:
-    dimos-desktop:
-        version: ">=0.2.0"
-        apis: { app.frontend: 1, app.dim_app: 1, api.dimos: 1 }
+# A dimOS Desktop app. Format: https://github.com/dimensionalOS/dimos-desktop/blob/jeff/rust_desktop/docs/apps.md
+title: LCM Constellation
+dimos-desktop-api: ">=1 <2"
+dimos-api:
+    - GET /dimos/runs
+    - GET /dimos/blueprints/{name}
+    - /ws

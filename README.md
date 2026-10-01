@@ -36,8 +36,8 @@ the graph follows whatever blueprint is running.
 dimos-desktop install https://github.com/jeff-hykin/dim-lcm-constellation --ref dimos-desktop2
 ```
 
-The install step (`nix run .#install`) caches the backend's imports and fetches the `spy` binary for your platform
-from the `latest` release (building it with nix if that fails).
+Desktop builds it with `nix build .#dimosApp`, which compiles the `spy` from source and wraps the backend as a
+`dimos-app-server`.
 
 ### Old dashboard
 
@@ -53,7 +53,6 @@ The app appears in the dashboard rail within a few seconds.
 dim/apps/lcmflow/
   app.yaml        title
   frontend/
-    icon.svg      rail icon
     index.html    the constellation view (frontend)
   main.js         backend — LCM sniff + topology, relayed over the app-bus
   lcm_vendor/     vendored @dimos/lcm (multicast-join fix)

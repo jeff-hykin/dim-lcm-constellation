@@ -20,7 +20,6 @@ const DESKTOP_URL = Deno.env.get("DIMOS_DESKTOP_URL") ?? "http://127.0.0.1:7077"
 
 const dimApp = new DimAppBackend()
 
-const home = Deno.env.get("HOME") ?? ""
 const appDir = import.meta.dirname ?? "."
 let graph = { blueprint: "", modules: {}, edges: [] }
 
@@ -120,79 +119,16 @@ setInterval(() => { refreshGraph().then((ok) => { if (ok) sendGraph() }) }, GRAP
 dimApp.onReceive((kind) => { if (kind === "hello") sendGraph() })
 
 // ── native spy: LCM + Zenoh metadata over stdout ─────────────────────────────
-// A dev build in spy/target wins; otherwise a prebuilt spy for this platform,
-// downloaded once from the `latest` release that CI builds from master (see
-// .github/workflows/release.yml), so a user machine needs neither cargo nor a
-// compile. Building with cargo is the last resort.
-const SPY_RELEASE_URL = "https://github.com/jeff-hykin/dim-lcm-constellation/releases/latest/download"
+// `nix build .#dimosApp` builds the spy and passes its path in LCMFLOW_SPY; a dev
+// build in spy/target (`cargo build --release`) is the fallback when run by hand.
 function spyBinPath() {
     const ext = Deno.build.os === "windows" ? ".exe" : ""
-    return `${appDir}/spy/target/release/spy${ext}`
-}
-// Asset name in the release: spy-<arch>-<os>, e.g. spy-x86_64-macos.
-function spyAssetName() {
-    const os = { darwin: "macos", linux: "linux" }[Deno.build.os]
-    return os ? `spy-${Deno.build.arch}-${os}` : null
-}
-function prebuiltSpyPath() {
-    const asset = spyAssetName()
-    return asset ? `${appDir}/spy/bin/${asset}` : null
-}
-async function downloadPrebuiltSpy() {
-    const path = prebuiltSpyPath()
-    if (!path) return null
-    const url = `${SPY_RELEASE_URL}/${spyAssetName()}`
-    console.error(`lcmflow: fetching prebuilt spy ${url}`)
-    const res = await fetch(url)
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${url}`)
-    await Deno.mkdir(`${appDir}/spy/bin`, { recursive: true })
-    // Write beside the target and rename in: a half-written binary must never be
-    // exec'd, and macOS refuses (SIGKILL) a binary overwritten in place after it ran.
-    const tmp = `${path}.part`
-    await Deno.writeFile(tmp, new Uint8Array(await res.arrayBuffer()))
-    await Deno.chmod(tmp, 0o755)
-    await Deno.rename(tmp, path)
-    return path
-}
-function resolveCargo() {
-    for (const c of ["cargo", `${home}/.cargo/bin/cargo`]) {
-        try {
-            if (c.includes("/")) { Deno.statSync(c); return c }
-            return c // rely on PATH lookup
-        } catch { /* try next */ }
+    for (const path of [Deno.env.get("LCMFLOW_SPY"), `${appDir}/spy/target/release/spy${ext}`]) {
+        if (!path) continue
+        try { if (Deno.statSync(path).isFile) return path } catch { /* not here */ }
     }
-    return "cargo"
-}
-async function ensureSpyBuilt() {
-    const bin = spyBinPath()
-    try { Deno.statSync(bin); return bin } catch { /* no dev build */ }
-    // built by the install step (`nix run .#install`) when no release binary could be fetched
-    try { Deno.statSync(`${appDir}/spy/result/bin/spy`); return `${appDir}/spy/result/bin/spy` } catch { /* none */ }
-    const prebuilt = prebuiltSpyPath()
-    if (prebuilt) {
-        try { Deno.statSync(prebuilt); return prebuilt } catch { /* not downloaded yet */ }
-        try { return await downloadPrebuiltSpy() } catch (err) {
-            console.error(`lcmflow: could not fetch a prebuilt spy (${err.message}) — building it instead`)
-        }
-    }
-    console.error("lcmflow: building native spy (first run, may take a few minutes)…")
-    try {
-        const build = new Deno.Command(resolveCargo(), {
-            args: ["build", "--release"],
-            cwd: `${appDir}/spy`,
-            stdout: "inherit",
-            stderr: "inherit",
-        }).spawn()
-        const status = await build.status
-        if (!status.success) {
-            console.error("lcmflow: spy build failed — no live traffic until it builds")
-            return null
-        }
-    } catch (err) {
-        console.error(`lcmflow: cannot build spy (${err.message}) — is cargo installed?`)
-        return null
-    }
-    try { Deno.statSync(bin); return bin } catch { return null }
+    console.error("lcmflow: no spy binary (set LCMFLOW_SPY or cargo build --release in spy/) — no live traffic")
+    return null
 }
 function handleFrame(frame) {
     if (frame.kind === "packets") {
@@ -229,7 +165,7 @@ async function pumpStderr(stream) {
     }
 }
 async function runSpy() {
-    const bin = await ensureSpyBuilt()
+    const bin = spyBinPath()
     if (!bin) return
     for (;;) {
         try {
