@@ -20,14 +20,26 @@ The backend (`main.js`) runs inside the Deno desktop process and subscribes to
 **every** LCM channel via a vendored `@dimos/lcm`. It reads *metadata only*
 (`{channel, count, bytes}`, batched every 50 ms) — payloads are never decoded —
 and forwards those frames to the browser over the app-bus. The module↔topic
-topology is parsed from the newest run log's structured `Transport` events and
-rescanned periodically, so the graph follows whatever blueprint is running.
+topology comes from dimOS Desktop's `/dimos/runs` (the newest running blueprint)
+and `/dimos/blueprints/<name>` (its modules' streams), rescanned periodically, so
+the graph follows whatever blueprint is running.
 
 > The vendored `lcm_vendor/` is `@dimos/lcm@0.2.0` with a local fix: upstream
 > never joins the multicast group, so its receive path saw zero packets. Swap
 > back to the jsr import once the fix lands upstream.
 
 ## Install
+
+### dimOS Desktop
+
+```sh
+dimos-desktop install https://github.com/jeff-hykin/dim-lcm-constellation --ref dimos-desktop2
+```
+
+The install step (`nix run .#install`) caches the backend's imports and fetches the `spy` binary for your platform
+from the `latest` release (building it with nix if that fails).
+
+### Old dashboard
 
 ```sh
 dim install https://github.com/jeff-hykin/dim-lcm-constellation

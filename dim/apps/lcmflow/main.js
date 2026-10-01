@@ -15,9 +15,8 @@ import { DimAppBackend } from "https://esm.sh/gh/jeff-hykin/dim-app@v0.3.0/backe
 
 const GRAPH_RESCAN_MS = 4000
 const SPY_RESTART_MS = 2000
-// The desktop server (dimos-helm) that serves this app also exposes the blueprint
-// metadata API. It normally lives on :1024; allow an override for odd setups.
-const HELM_URL = Deno.env.get("DIM_HELM_URL") ?? "http://localhost:1024"
+// dimOS Desktop's /dimos/ API gives the running blueprints and each blueprint's module streams.
+const DESKTOP_URL = Deno.env.get("DIMOS_DESKTOP_URL") ?? "http://127.0.0.1:7077"
 
 const dimApp = new DimAppBackend()
 
@@ -52,11 +51,11 @@ function onResourceB64(b64) {
 }
 
 // ── graph: build from the active blueprint's module metadata ──────────────────
-// The desktop server exposes /api/dimos-info (blueprints + per-module typed
-// inputs/outputs + docstrings) and tracks launched blueprints in runs.json. We
-// pick the active blueprint, then join module streams by name to form topics with
-// real pub/sub direction — publishers are a module's `outputs`, subscribers its
-// `inputs`. (Remapping can rename streams, so a handful of topics may not fuse;
+// Desktop lists live runs (the dimos run registry) at /dimos/runs and each
+// blueprint's modules + typed streams at /dimos/blueprints/<name>. We pick the
+// newest-started run, then join module streams by name to form topics with real
+// pub/sub direction — publishers are a module's "out" streams, subscribers its
+// "in" ones. (Remapping can rename streams, so a handful of topics may not fuse;
 // good enough — the runtime spy still lights up whatever actually flows.)
 async function fetchJson(url) {
     try {
@@ -65,103 +64,47 @@ async function fetchJson(url) {
         return await res.json()
     } catch { return null }
 }
-function alivePids() {
-    // one `ps` snapshot → set of live pids, so we can prefer a running blueprint.
-    try {
-        const out = new Deno.Command("ps", { args: ["-eo", "pid="], stdout: "piped" }).outputSync()
-        const text = new TextDecoder().decode(out.stdout)
-        return new Set(text.split("\n").map((s) => Number(s.trim())).filter(Boolean))
-    } catch { return new Set() }
+// The name of the blueprint that is actually running (newest-started live run), or null.
+async function pickActiveBlueprint() {
+    const runs = (await fetchJson(`${DESKTOP_URL}/dimos/runs`))?.runs ?? []
+    if (runs.length === 0) return null
+    runs.sort((a, b) => String(a.started_at).localeCompare(String(b.started_at)))
+    return runs[runs.length - 1].blueprint
 }
-// The dimos run registry (~/.local/state/dimos/runs/<run_id>.json) — the
-// canonical record of running blueprints, the same source `dimos stop` reads.
-// Every launch (terminal or desktop) writes one file with the blueprint name +
-// pid; keep only entries whose pid is alive. Newest-started last.
-function readDimosRegistry() {
-    const dir = `${home}/.local/state/dimos/runs`
-    const live = alivePids()
-    const out = []
-    let names = []
-    try {
-        names = [...Deno.readDirSync(dir)].map((e) => e.name).filter((n) => n.endsWith(".json"))
-    } catch { return [] }
-    for (const name of names) {
-        try {
-            const rec = JSON.parse(Deno.readTextFileSync(`${dir}/${name}`))
-            if (!rec || typeof rec.blueprint !== "string" || !rec.pid) continue
-            if (!live.has(Number(rec.pid))) continue
-            out.push({ name: rec.blueprint, started: rec.started_at ?? "" })
-        } catch { /* stale / corrupt entry */ }
-    }
-    out.sort((a, b) => a.started.localeCompare(b.started))
-    return out
-}
-// The name of the blueprint that is actually running: the newest-started live
-// entry in the dimos run registry (the same source `dimos stop` reads). Returns
-// null when nothing is running. The name may be one the desktop's dimos dir
-// doesn't know.
-function pickActiveBlueprint() {
-    const reg = readDimosRegistry()
-    if (reg.length > 0) return reg[reg.length - 1].name
-    return null
-}
-function buildGraph(bp, info) {
-    const modsById = new Map(info.modules.map((m) => [m.id, m]))
+function buildGraph(info) {
     const modules = {}          // id -> card payload
     const edges = []            // { module, topic, type, direction }
     const seen = new Set()
-    const addEdge = (module, topic, type, direction, declared) => {
+    const addEdge = (module, topic, type, direction) => {
         const key = `${module}|${topic}|${direction}`
         if (seen.has(key)) return
         seen.add(key)
-        edges.push({ module, topic, type, direction, declared: declared ?? null })
+        edges.push({ module, topic, type, direction, declared: null })
     }
-    // A blueprint's `.remappings([(Module, declared, wire)])` renames a module's
-    // stream to the channel it actually rides. Fuse on the wire name so a renamed
-    // publisher joins its subscriber (and matches live spy traffic) — otherwise a
-    // pub declared `twist_command` remapped to `cmd_vel` never meets `cmd_vel`.
-    // `Blueprint.remappings` keys by INSTANCE name, which defaults to the module's
-    // class name lowercased ("frontcamera"), while `bp.modules` lists registered
-    // ids ("front-camera"). Keying on the id misses every rename, so go through
-    // each module's class_name instead.
-    const instanceKey = (module, stream) => `${String(module).toLowerCase()}|${stream}`
-    const remap = new Map((bp.remappings ?? []).map((r) => [instanceKey(r.module, r.from), r.to]))
-    const wireName = (id, name) => remap.get(instanceKey(modsById.get(id)?.class_name ?? id, name)) ?? name
-    // a renamed stream keeps its declared name and gains `wire` — the frontend
-    // draws that pair on the edge so the rename is visible on the graph.
-    const withWire = (id, arr) => (arr ?? []).map((s) => {
-        const wire = wireName(id, s.name)
-        return wire === s.name ? s : { ...s, wire }
-    })
-    for (const id of bp.modules) {
-        const m = modsById.get(id)
-        if (!m) continue
-        modules[id] = {
-            id, label: m.class_name ?? id, doc: m.doc ?? "",
-            inputs: withWire(id, m.inputs), outputs: withWire(id, m.outputs),
-            rpcs: m.rpcs ?? [], skills: m.skills ?? [],
+    for (const m of info.modules ?? []) {
+        const streams = m.streams ?? []
+        const pick = (dir) => streams.filter((s) => s.direction === dir || s.direction === "inout").map(({ name, type }) => ({ name, type }))
+        modules[m.name] = {
+            id: m.name, label: String(m.class ?? m.name).split(".").pop(), doc: "",
+            inputs: pick("in"), outputs: pick("out"), rpcs: [], skills: [],
         }
-        for (const s of modules[id].outputs) addEdge(id, s.wire ?? s.name, s.type ?? "", "out", s.wire ? s.name : null)
-        for (const s of modules[id].inputs) addEdge(id, s.wire ?? s.name, s.type ?? "", "in", s.wire ? s.name : null)
+        for (const s of modules[m.name].outputs) addEdge(m.name, s.name, s.type ?? "", "out")
+        for (const s of modules[m.name].inputs) addEdge(m.name, s.name, s.type ?? "", "in")
     }
-    return { blueprint: bp.name, modules, edges }
+    return { blueprint: info.name, modules, edges }
 }
 async function refreshGraph() {
-    const active = pickActiveBlueprint()
+    const active = await pickActiveBlueprint()
     if (!active) {
         if (graph.blueprint === "") return false
         graph = { blueprint: "", modules: {}, edges: [] }
         return true
     }
-    const info = await fetchJson(`${HELM_URL}/api/dimos-info`)
-    const byName = (info && Array.isArray(info.blueprints))
-        ? new Map(info.blueprints.map((b) => [b.name, b]))
-        : new Map()
-    // Running blueprint whose modules the desktop's dimos dir knows → full graph.
-    // Otherwise report it as running with no module metadata (add its dir to the
-    // desktop's dimos dirs to render the flow).
-    const next = byName.has(active)
-        ? buildGraph(byName.get(active), info)
+    // Running blueprint whose modules Desktop's dimos knows → full graph; otherwise
+    // report it as running with no module metadata.
+    const info = await fetchJson(`${DESKTOP_URL}/dimos/blueprints/${encodeURIComponent(active)}`)
+    const next = info && Array.isArray(info.modules)
+        ? buildGraph({ ...info, name: active })
         : { blueprint: active, modules: {}, edges: [], unknown: true }
     if (JSON.stringify(next) === JSON.stringify(graph)) return false
     graph = next
@@ -223,6 +166,8 @@ function resolveCargo() {
 async function ensureSpyBuilt() {
     const bin = spyBinPath()
     try { Deno.statSync(bin); return bin } catch { /* no dev build */ }
+    // built by the install step (`nix run .#install`) when no release binary could be fetched
+    try { Deno.statSync(`${appDir}/spy/result/bin/spy`); return `${appDir}/spy/result/bin/spy` } catch { /* none */ }
     const prebuilt = prebuiltSpyPath()
     if (prebuilt) {
         try { Deno.statSync(prebuilt); return prebuilt } catch { /* not downloaded yet */ }
