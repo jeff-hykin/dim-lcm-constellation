@@ -3,3 +3,5 @@ __pycache__/
 .DS_Store
 .ruff_cache/
 result
+# spy downloads left by the old install step
+dim/apps/lcmflow/spy/bin/
