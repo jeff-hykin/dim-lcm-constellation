@@ -1,7 +1,6 @@
 # A dimOS Desktop app. Format: https://github.com/dimensionalOS/dimos-desktop/blob/jeff/rust_desktop/docs/apps.md
 title: LCM Constellation
-dimos-desktop-api: ">=1 <2"
+dimos-desktop-api: ">=2 <3"
 dimos-api:
     - GET /dimos/runs
     - GET /dimos/blueprints/{name}
-    - /ws

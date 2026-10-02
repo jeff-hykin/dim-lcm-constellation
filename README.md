@@ -1,6 +1,6 @@
 # dim-lcm-constellation
 
-A [DimOS dashboard](https://github.com/jeff-hykin/dim-app) app that visualizes
+A [dimOS Desktop](https://github.com/dimensionalOS/dimos-desktop) app that visualizes
 **live LCM traffic** as a constellation: modules and topics are nodes, and every
 packet on the wire lights up the edge it travelled along.
 

@@ -19,13 +19,13 @@ limitations under the License.
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Dimensional · Module Flow</title>
-<link rel="stylesheet" href="/assets/theme.css" />
+<link rel="stylesheet" href="theme.css" />
 <style>
   /* A React-Flow-style module/topic graph, but hand-rolled with DOM nodes + one
      SVG edge layer (no React, no canvas). Everything lives inside `.viewport`,
      which is pan/zoomed with a single CSS transform, so node cards, edge paths
      and labels all scale together and stay crisp. Colors come from the shared
-     Science theme (/assets/theme.css) via `var(--…)` inline styles, so the graph
+     Science theme (theme.css) via `var(--…)` inline styles, so the graph
      tracks light/dark automatically with no per-token JS probing. */
   :root { --node-radius: 10px; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg);
@@ -348,7 +348,7 @@ limitations under the License.
 <div id="help">DRAG pan · SCROLL zoom · HOVER module for card · CLICK pin · G cycle layout · T topics · D workers</div>
 
 <script type="module">
-import { DimAppFrontend } from "https://esm.sh/gh/jeff-hykin/dim-app@v0.3.0/frontend.js";
+import { DimAppFrontend } from "https://esm.sh/gh/jeff-hykin/dim-app@v0.5.0/frontend.js";
 "use strict";
 
 // ─────────────────────────────────────────────────────────── color mapping ──
