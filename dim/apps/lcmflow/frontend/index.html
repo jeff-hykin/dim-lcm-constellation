@@ -36,7 +36,7 @@ limitations under the License.
   #flow { position: fixed; inset: 0; overflow: hidden; cursor: grab;
     /* React-Flow's signature dotted lattice; it pans/zooms via background-* set in JS */
     background-color: var(--bg);
-    background-image: radial-gradient(color-mix(in oklch, var(--muted-fg) 40%, transparent) 1px, transparent 0);
+    background-image: radial-gradient(color-mix(in srgb, var(--muted-fg) 40%, transparent) 1px, transparent 0);
     background-size: 22px 22px; background-position: 0 0; }
   #flow.grabbing { cursor: grabbing; }
   #viewport { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
@@ -107,11 +107,11 @@ limitations under the License.
   .elabel { position: absolute; transform: translate(-50%, -50%); pointer-events: none;
     z-index: 1; font-size: 9px; letter-spacing: .3px; white-space: nowrap;
     padding: 1px 5px; border-radius: 999px; color: var(--muted-fg);
-    background: color-mix(in oklch, var(--bg) 85%, transparent);
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
     border: 1px dashed color-mix(in oklch, var(--muted-fg) 40%, var(--border)); }
 
   /* ── chrome: toolbar, controls, legend ────────────────────────────────── */
-  .bar { position: fixed; z-index: 6; background: color-mix(in oklch, var(--card) 90%, transparent);
+  .bar { position: fixed; z-index: 6; background: color-mix(in srgb, var(--card) 90%, transparent);
     border: 1px solid var(--border); border-radius: 10px; backdrop-filter: blur(8px);
     box-shadow: 0 4px 16px rgba(0,0,0,0.18); }
   #toolbar { top: 12px; left: 12px; display: flex; align-items: center; gap: 16px; padding: 8px 14px; font-size: 11px; }
@@ -129,14 +129,14 @@ limitations under the License.
   #layouts button { appearance: none; font: inherit; font-size: 10px; letter-spacing: 0.5px;
     padding: 4px 9px; cursor: pointer; color: var(--muted-fg); background: transparent;
     border: 1px solid transparent; border-radius: 7px; }
-  #layouts button:hover { background: color-mix(in oklch, var(--muted-fg) 14%, transparent); color: var(--fg); }
-  #layouts button.on { color: var(--info); background: color-mix(in oklch, var(--info) 14%, transparent);
+  #layouts button:hover { background: color-mix(in srgb, var(--muted-fg) 14%, transparent); color: var(--fg); }
+  #layouts button.on { color: var(--info); background: color-mix(in srgb, var(--info) 14%, transparent);
     border-color: color-mix(in oklch, var(--info) 40%, var(--border)); }
 
   #controls { bottom: 16px; left: 16px; display: flex; flex-direction: column; padding: 4px; gap: 2px; }
   #controls button { appearance: none; width: 30px; height: 28px; font: inherit; font-size: 15px; line-height: 1;
     cursor: pointer; color: var(--fg); background: transparent; border: 0; border-radius: 7px; }
-  #controls button:hover { background: color-mix(in oklch, var(--muted-fg) 16%, transparent); }
+  #controls button:hover { background: color-mix(in srgb, var(--muted-fg) 16%, transparent); }
   #controls .fit { font-size: 11px; letter-spacing: 1px; }
 
   #legend { position: fixed; bottom: 18px; left: 62px; z-index: 6; display: flex; gap: 16px;
@@ -177,7 +177,7 @@ limitations under the License.
   #topics .body { padding: 5px 8px 8px; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; }
   #topics .body::-webkit-scrollbar { width: 0; height: 0; display: none; }
   #topics .trow { display: flex; align-items: baseline; gap: 7px; font-size: 11px; padding: 2px 4px; border-radius: 5px; }
-  #topics .trow.live { background: color-mix(in oklch, var(--info) 8%, transparent); }
+  #topics .trow.live { background: color-mix(in srgb, var(--info) 8%, transparent); }
   #topics .trow .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--accent, var(--muted-fg)); align-self: center; }
   #topics .trow .n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
   #topics .trow .hz { flex: none; width: 62px; text-align: right; color: var(--muted-fg); font-variant-numeric: tabular-nums; }
@@ -203,11 +203,11 @@ limitations under the License.
   #dtop .row .n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #dtop .row .c { flex: none; color: var(--muted-fg); } #dtop .row .c b { color: var(--info); font-weight: 600; }
   #dtop .row { cursor: default; border-radius: 5px; margin: 0 -5px; padding-left: 5px; padding-right: 5px; }
-  #dtop .row:hover { background: color-mix(in oklch, var(--fg) 8%, transparent); }
+  #dtop .row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
   #dtop .empty { color: var(--muted-fg); font-size: 11px; padding: 4px 0; }
   /* full per-worker detail on hover (mirrors the `dimos dtop` TUI) */
   #dtop-tip { position: fixed; z-index: 30; width: 250px; pointer-events: none; opacity: 0;
-    transition: opacity .1s; background: color-mix(in oklch, var(--card) 96%, transparent);
+    transition: opacity .1s; background: color-mix(in srgb, var(--card) 96%, transparent);
     border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px;
     box-shadow: 0 8px 28px rgba(0,0,0,.4); font-size: 11px; color: var(--fg); }
   #dtop-tip.show { opacity: 1; }
@@ -228,7 +228,7 @@ limitations under the License.
   #card { width: 300px; max-height: 74vh; overflow-y: auto; padding: 0; display: none;
     top: 0; left: 0; z-index: 8;
     /* translucent by default (hover preview) so it doesn't hide the graph */
-    background: color-mix(in oklch, var(--card) 30%, transparent); backdrop-filter: blur(3px);
+    background: color-mix(in srgb, var(--card) 30%, transparent); backdrop-filter: blur(3px);
     box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
   #card.show { display: block; }
   /* clicked → pinned: fully opaque + persistent so it reads as a real panel */
@@ -236,8 +236,8 @@ limitations under the License.
     box-shadow: 0 6px 22px rgba(0,0,0,0.28); border-color: color-mix(in oklch, var(--info) 40%, var(--border)); }
   #card .chd { display: flex; align-items: center; gap: 8px; padding: 10px 12px 8px;
     border-bottom: 1px solid var(--border); position: sticky; top: 0;
-    background: color-mix(in oklch, var(--card) 30%, transparent); backdrop-filter: blur(3px); }
-  #card.pinned .chd { background: color-mix(in oklch, var(--card) 94%, transparent); backdrop-filter: blur(8px); }
+    background: color-mix(in srgb, var(--card) 30%, transparent); backdrop-filter: blur(3px); }
+  #card.pinned .chd { background: color-mix(in srgb, var(--card) 94%, transparent); backdrop-filter: blur(8px); }
   #card .chd .badge { font-size: 8px; letter-spacing: 1.5px; font-weight: 700; color: var(--info);
     border: 1px solid color-mix(in oklch, var(--info) 45%, var(--border)); border-radius: 5px; padding: 2px 5px; }
   #card .chd .nm { font-size: 13px; font-weight: 600; color: var(--fg); }
