@@ -1,8 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" color="#7180e4" role="img" aria-label="LCM Constellation">
-  <!-- dimOS app icon set: 24 grid, 2px round strokes, one hue per app at equal lightness, 24% tint for the duotone fill -->
-  <path d="M9.17 9.67L6.62 7.12"/><path d="M14.74 9.58L17.45 6.69"/><path d="M15.1 15.02L17.67 17.11"/><path d="M9.27 15.42L7.05 17.81"/>
-  <path d="M7.5 4.9L16.5 4.6"/>
-  <circle cx="12" cy="12.5" r="3" fill="currentColor" fill-opacity=".24"/>
-  <circle cx="4.5" cy="5" r="2"/><circle cx="19.5" cy="4.5" r="2"/><circle cx="20" cy="19" r="2"/><circle cx="5" cy="20" r="2"/>
-  <circle cx="12" cy="12.5" r="1" fill="currentColor" stroke="none"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="LCM Constellation">
+  <!-- dimOS app icon set v6: dark glass tile tinted to the glyph, neon gradient glyph with a soft bloom -->
+  <defs>
+    <radialGradient id="tile" cx=".5" cy=".18" r=".95"><stop offset="0" stop-color="#1e1040"/><stop offset="1" stop-color="#07070f"/></radialGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".13"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".45"/><stop offset=".25" stop-color="#fff" stop-opacity=".1"/><stop offset="1" stop-color="#fff" stop-opacity=".06"/></linearGradient>
+    <filter id="bloom" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.4"/></filter>
+    <linearGradient id="a" gradientUnits="userSpaceOnUse" x1="14" y1="14" x2="50" y2="50"><stop offset="0" stop-color="#ff7ad9"/><stop offset="1" stop-color="#4de6ff"/></linearGradient>
+    <g id="glyph"><g stroke="url(#a)" stroke-width="2" stroke-linecap="round"><path d="M32 33L20 21"/><path d="M32 33L44.5 19"/><path d="M32 33L45.5 44"/><path d="M32 33L19.5 45"/><path d="M20 21L44.5 19" stroke-dasharray="1.6 2.4" opacity=".8"/></g>
+      <g fill="url(#a)"><circle cx="20" cy="21" r="3.3"/><circle cx="44.5" cy="19" r="3.3"/><circle cx="45.5" cy="44" r="3.3"/><circle cx="19.5" cy="45" r="3.3"/><circle cx="32" cy="33" r="5.4"/></g>
+      <circle cx="32" cy="33" r="2.2" fill="#fff" opacity=".85"/></g>
+  </defs>
+  <path d="M16 2H48A14 14 0 0 1 62 16V48A14 14 0 0 1 48 62H16A14 14 0 0 1 2 48V16A14 14 0 0 1 16 2Z" fill="url(#tile)"/>
+  <path d="M16 3H48A13 13 0 0 1 61 16V24H3V16A13 13 0 0 1 16 3Z" fill="url(#sheen)"/>
+  <g transform="translate(32 32) scale(1.12) translate(-32 -32)">
+    <use href="#glyph" filter="url(#bloom)"/>
+    <use href="#glyph"/>
+  </g>
+  <path d="M16 2H48A14 14 0 0 1 62 16V48A14 14 0 0 1 48 62H16A14 14 0 0 1 2 48V16A14 14 0 0 1 16 2Z" fill="none" stroke="url(#rim)" stroke-width="1"/>
 </svg>
