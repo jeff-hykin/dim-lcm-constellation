@@ -17,6 +17,7 @@ limitations under the License.
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Dimensional · Module Flow</title>
 <link rel="stylesheet" href="theme.css" />
@@ -26,11 +27,16 @@ limitations under the License.
      which is pan/zoomed with a single CSS transform, so node cards, edge paths
      and labels all scale together and stay crisp. Colors come from the shared
      Science theme (theme.css) via `var(--…)` inline styles, so the graph
-     tracks light/dark automatically with no per-token JS probing. */
-  :root { --node-radius: 10px; }
+     tracks light/dark automatically with no per-token JS probing. A node's
+     type color is the app-local `--node-accent` (the theme's `--accent` is the hover grey). */
+  :root { --node-radius: var(--radius-lg); }
   html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg);
-    font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
-    color: var(--fg); font-variant-numeric: tabular-nums; }
+    font-family: var(--sans); color: var(--fg); font-variant-numeric: tabular-nums; }
+  /* data text (topic names, rates, numbers, ids) is mono; all other chrome is sans */
+  .node.topic .name, .node.topic .rate, .node.topic .type, .node.module .trow, .elabel,
+  #toolbar .readout b, #topics .trow .n, #topics .trow .hz, #topics .trow .tp, #topics-count,
+  #dtop .row .c, #dtop-tip .pid, #dtop-tip .kv b, #dtop-tip .ch .crow,
+  #card .chip, #card .mrow { font-family: var(--mono); }
 
   /* ── flow surface ─────────────────────────────────────────────────────── */
   #flow { position: fixed; inset: 0; overflow: hidden; cursor: grab;
@@ -46,12 +52,12 @@ limitations under the License.
   /* ── nodes ────────────────────────────────────────────────────────────── */
   .node { position: absolute; box-sizing: border-box; user-select: none; cursor: pointer;
     border: 1px solid var(--border); border-radius: var(--node-radius);
-    background: var(--card); box-shadow: 0 1px 2px rgba(0,0,0,0.18), 0 4px 14px rgba(0,0,0,0.10);
+    background: var(--card); box-shadow: var(--shadow-sm);
     transition: box-shadow .12s ease, border-color .12s ease, opacity .12s ease; }
   .node.dim { opacity: 0.26; }
-  .node.hi { border-color: color-mix(in oklch, var(--accent, var(--info)) 70%, var(--border));
-    box-shadow: 0 0 0 1px var(--accent, var(--info)), 0 6px 20px rgba(0,0,0,0.22); }
-  .node.pulse { border-color: var(--accent, var(--info)); }
+  .node.hi { border-color: color-mix(in oklch, var(--node-accent, var(--info)) 70%, var(--border));
+    box-shadow: 0 0 0 1px var(--node-accent, var(--info)), var(--shadow-md); }
+  .node.pulse { border-color: var(--node-accent, var(--info)); }
 
   /* module = rounded card with a left accent rail + header row */
   .node.module { min-width: 152px;
@@ -60,47 +66,47 @@ limitations under the License.
   .node.module::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
     border-radius: var(--node-radius) 0 0 var(--node-radius); background: var(--info); }
   .node.module .head { display: flex; align-items: center; gap: 8px; padding: 9px 12px 9px 15px; }
-  .node.module .kind { font-size: 8px; letter-spacing: 1.5px; font-weight: 700; color: var(--info); }
+  .node.module .kind { font-size: 8px; letter-spacing: var(--track-label); font-weight: 600; color: var(--info); }
   .node.module .name { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 600; color: var(--fg);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .node.module .chev { flex: none; font-size: 9px; color: var(--muted-fg); transition: transform .12s ease; }
+  .node.module .chev { flex: none; display: inline-flex; font-size: 10px; color: var(--muted-fg); transition: transform .12s ease; }
   .node.module.open .chev { transform: rotate(90deg); }
 
   /* expanded body: the module's published / subscribed topics with live Hz */
   .node.module .body { display: none; border-top: 1px solid var(--border); padding: 6px 12px 9px 14px; }
   .node.module.open .body { display: block; }
-  .node.module .grp { font-size: 8px; letter-spacing: 1.5px; color: var(--muted-fg); margin: 5px 0 3px; }
+  .node.module .grp { font-size: 8px; letter-spacing: var(--track-label); color: var(--muted-fg); margin: 5px 0 3px; }
   .node.module .trow { display: flex; align-items: baseline; gap: 8px; font-size: 11px; padding: 1px 0; }
   .node.module .trow .tn { flex: 1 1 auto; min-width: 0; color: var(--fg);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .node.module .trow .th { flex: none; color: var(--muted-fg); white-space: nowrap; }
-  .node.module .trow .th b { color: var(--accent, var(--info)); font-weight: 600; }
+  .node.module .trow .th b { color: var(--node-accent, var(--info)); font-weight: 600; }
   .node.module .trow .arrow { flex: none; color: var(--muted-fg); font-size: 10px; }
 
   /* topic = compact pill, colored by message type */
   .node.topic { display: flex; flex-direction: column; gap: 0; padding: 3px 11px; border-radius: 999px;
-    border-width: 1.5px; border-color: color-mix(in oklch, var(--accent, var(--info)) 80%, var(--border)); }
+    border-width: 1.5px; border-color: color-mix(in oklch, var(--node-accent, var(--info)) 80%, var(--border)); }
   .node.topic .name { font-size: 11px; font-weight: 600; color: color-mix(in oklch, var(--fg) 62%, var(--muted-fg)); white-space: nowrap; line-height: 1.3; }
   .node.topic .rate { font-size: 9px; color: var(--muted-fg); white-space: nowrap; line-height: 1.2; }
   .node.topic .rate:empty { display: none; }
-  .node.topic .rate b { color: var(--accent, var(--info)); font-weight: 600; }
+  .node.topic .rate b { color: var(--node-accent, var(--info)); font-weight: 600; }
   .node.topic .rate .ago { opacity: .75; }
-  .node.topic .type { display: none; font-size: 8px; letter-spacing: .5px; color: var(--accent, var(--info)); white-space: nowrap; line-height: 1.2; }
+  .node.topic .type { display: none; font-size: 8px; letter-spacing: .5px; color: var(--node-accent, var(--info)); white-space: nowrap; line-height: 1.2; }
   .node.topic:hover .type, .node.topic.hi .type { display: block; }
   /* nobody subscribes → gray it out (override the type accent) */
-  .node.topic.orphan { border-style: dashed; --accent: var(--muted-fg);
+  .node.topic.orphan { border-style: dashed; --node-accent: var(--muted-fg);
     border-color: color-mix(in oklch, var(--muted-fg) 42%, var(--border)); }
   /* floating "recent activity" topic — seen live in the last 5min but not declared
      in the blueprint (e.g. cancel_goal). Dotted ring + a small LIVE tag flag it. */
   .node.topic.recent { border-style: dotted;
-    border-color: color-mix(in oklch, var(--accent, var(--info)) 75%, var(--border)); }
+    border-color: color-mix(in oklch, var(--node-accent, var(--info)) 75%, var(--border)); }
   .node.topic.recent .rate::before { content: "recent · "; color: var(--muted-fg); font-weight: 400; }
 
   /* the little connection handles React-Flow draws on each node edge */
   .handle { position: absolute; width: 7px; height: 7px; border-radius: 50%;
     background: var(--card); border: 1.5px solid var(--muted-fg); top: 50%; transform: translateY(-50%); }
   .handle.l { left: -4px; } .handle.r { right: -4px; }
-  .node.hi .handle { border-color: var(--accent, var(--info)); }
+  .node.hi .handle { border-color: var(--node-accent, var(--info)); }
 
   /* the only edge label: a blueprint `.remappings(...)` rename. The topic node
      carries the wire name, so the edge shows the module's *declared* stream name. */
@@ -110,45 +116,33 @@ limitations under the License.
     background: color-mix(in srgb, var(--bg) 85%, transparent);
     border: 1px dashed color-mix(in oklch, var(--muted-fg) 40%, var(--border)); }
 
-  /* ── chrome: toolbar, controls, legend ────────────────────────────────── */
-  .bar { position: fixed; z-index: 6; background: color-mix(in srgb, var(--card) 90%, transparent);
-    border: 1px solid var(--border); border-radius: 10px; backdrop-filter: blur(8px);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.18); }
+  /* ── chrome: toolbar, controls, legend (look = .dim-panel.glass / .dim-tabs / .dim-btn) ── */
+  .bar { position: fixed; z-index: 6; }
   #toolbar { top: 12px; left: 12px; display: flex; align-items: center; gap: 16px; padding: 8px 14px; font-size: 11px; }
-  #toolbar .logo { font-size: 12px; font-weight: 700; letter-spacing: 2.5px; color: var(--info); }
-  #toolbar .logo span { color: var(--muted-fg); font-weight: 400; letter-spacing: 1.5px; }
+  #toolbar .logo { font-size: 11.5px; font-weight: 600; letter-spacing: var(--track-label); color: var(--info); }
+  #toolbar .logo span { color: var(--muted-fg); font-weight: 400; letter-spacing: 0.1em; }
   #toolbar .sep { width: 1px; height: 16px; background: var(--border); }
   #toolbar .readout { color: var(--muted-fg); white-space: nowrap; }
   #toolbar .readout b { color: var(--fg); font-weight: 600; }
-  #conn { letter-spacing: 1px; color: var(--muted-fg); white-space: nowrap; }
+  #conn { letter-spacing: 0.06em; color: var(--muted-fg); white-space: nowrap; }
   #conn.live { color: var(--info); }
 
-  #layouts { top: 60px; left: 12px; display: flex; gap: 2px; padding: 4px; }
-  #layouts .lbl { align-self: center; font-size: 8px; letter-spacing: 1.5px; font-weight: 700;
-    color: var(--muted-fg); padding: 0 6px 0 2px; }
-  #layouts button { appearance: none; font: inherit; font-size: 10px; letter-spacing: 0.5px;
-    padding: 4px 9px; cursor: pointer; color: var(--muted-fg); background: transparent;
-    border: 1px solid transparent; border-radius: 7px; }
-  #layouts button:hover { background: color-mix(in srgb, var(--muted-fg) 14%, transparent); color: var(--fg); }
-  #layouts button.on { color: var(--info); background: color-mix(in srgb, var(--info) 14%, transparent);
-    border-color: color-mix(in oklch, var(--info) 40%, var(--border)); }
+  #layouts { top: 60px; left: 12px; }
 
   #controls { bottom: 16px; left: 16px; display: flex; flex-direction: column; padding: 4px; gap: 2px; }
-  #controls button { appearance: none; width: 30px; height: 28px; font: inherit; font-size: 15px; line-height: 1;
-    cursor: pointer; color: var(--fg); background: transparent; border: 0; border-radius: 7px; }
-  #controls button:hover { background: color-mix(in srgb, var(--muted-fg) 16%, transparent); }
-  #controls .fit { font-size: 11px; letter-spacing: 1px; }
+  #controls button { width: 30px; height: 28px; padding: 0; font-size: 15px; }
+  #controls .fit { font-size: 10px; }
 
   #legend { position: fixed; bottom: 18px; left: 62px; z-index: 6; display: flex; gap: 16px;
     flex-wrap: wrap; max-width: 40vw;
-    font-size: 10px; letter-spacing: 1px; color: var(--muted-fg); user-select: none; }
+    font-size: 10px; letter-spacing: 0.06em; color: var(--muted-fg); user-select: none; }
   #legend .k { display: inline-flex; align-items: center; gap: 6px; }
-  #legend .sw { width: 18px; height: 10px; border: 1px solid var(--border); border-radius: 3px; }
+  #legend .sw { width: 18px; height: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
   #legend .sw.mod { background: var(--card); border-left: 3px solid var(--info); }
   #legend .sw.top { border-radius: 999px; border-color: color-mix(in oklch, var(--info) 45%, var(--border)); }
 
   #help { position: fixed; bottom: 18px; right: 16px; z-index: 6; color: var(--muted-fg);
-    font-size: 10px; letter-spacing: 1px; user-select: none; opacity: 0.8;
+    font-size: 10px; letter-spacing: 0.06em; user-select: none; opacity: 0.8;
     max-width: 52vw; text-align: right; line-height: 1.5; }
 
   /* topics table — sortable list of every topic + live rate; toggle with T */
@@ -157,28 +151,28 @@ limitations under the License.
   #topics.collapsed { bottom: auto; max-height: none; }
   #topics.collapsed .body, #topics.collapsed .thead { display: none; }
   #topics .thead { display: flex; align-items: center; gap: 7px; padding: 3px 12px 4px; font-size: 8.5px;
-    letter-spacing: 1px; color: var(--muted-fg); border-bottom: 1px solid var(--border); }
+    letter-spacing: 0.1em; color: var(--muted-fg); border-bottom: 1px solid var(--border); }
   #topics .thead .sp { flex: none; width: 6px; }
   #topics .thead .n { flex: 1 1 auto; min-width: 0; }
   #topics .thead .hz { flex: none; width: 62px; text-align: right; }
   #topics .thead .tp { flex: none; width: 62px; text-align: right; }
   #topics .thead .sortkey { cursor: pointer; user-select: none; }
   #topics .thead .sortkey:hover { color: var(--fg); }
-  #topics .thead .sortkey.active { color: var(--info); font-weight: 700; }
-  #topics .thead .sortkey.active::after { content: " ▾"; font-size: 7px; }
+  #topics .thead .sortkey.active { color: var(--info); font-weight: 600; }
+  #topics .thead .sortkey .sort-ind { display: none; font-size: 8px; }
+  #topics .thead .sortkey.active .sort-ind { display: inline; }
   #topics.collapsed h2 { border-bottom: none; }
   #topics.collapsed .caret { transform: rotate(-90deg); }
-  #topics h2 { margin: 0; font-size: 9px; font-weight: 600; letter-spacing: 2px; color: var(--muted-fg);
-    padding: 9px 12px 8px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; flex: none; cursor: pointer; user-select: none; }
+  #topics h2 { margin: 0; padding: 9px 12px 8px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; flex: none; cursor: pointer; user-select: none; }
   #topics h2:hover { color: var(--fg); }
-  #topics h2 .thd { display: inline-flex; align-items: center; gap: 6px; color: var(--muted-fg); }
-  #topics h2 .caret { display: inline-block; font-size: 8px; transition: transform .12s; color: var(--muted-fg); }
+  #topics h2 .thd { display: inline-flex; align-items: center; gap: 6px; }
+  #topics h2 .caret { display: inline-flex; transition: transform .12s; }
   #topics h2 #topics-count { color: var(--fg); }
   #topics .body { padding: 5px 8px 8px; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; }
   #topics .body::-webkit-scrollbar { width: 0; height: 0; display: none; }
-  #topics .trow { display: flex; align-items: baseline; gap: 7px; font-size: 11px; padding: 2px 4px; border-radius: 5px; }
+  #topics .trow { display: flex; align-items: baseline; gap: 7px; font-size: 11px; padding: 2px 4px; border-radius: var(--radius-sm); }
   #topics .trow.live { background: color-mix(in srgb, var(--info) 8%, transparent); }
-  #topics .trow .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--accent, var(--muted-fg)); align-self: center; }
+  #topics .trow .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--node-accent, var(--muted-fg)); align-self: center; }
   #topics .trow .n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
   #topics .trow .hz { flex: none; width: 62px; text-align: right; color: var(--muted-fg); font-variant-numeric: tabular-nums; }
   #topics .trow .hz b { color: var(--info); font-weight: 600; }
@@ -190,11 +184,10 @@ limitations under the License.
   /* dtop (per-worker CPU/RAM) kept as an opt-in side panel; toggle with D */
   #dtop { top: 12px; right: 12px; width: 264px; z-index: 6; padding: 0; display: none; }
   #dtop.show { display: block; }
-  #dtop h2 { margin: 0; font-size: 9px; font-weight: 600; letter-spacing: 2px; color: var(--muted-fg);
-    padding: 9px 12px 8px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; cursor: pointer; user-select: none; }
+  #dtop h2 { margin: 0; padding: 9px 12px 8px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; cursor: pointer; user-select: none; }
   #dtop h2:hover { color: var(--fg); }
   #dtop h2 .thd { display: inline-flex; align-items: center; gap: 6px; }
-  #dtop h2 .caret { display: inline-block; font-size: 8px; transition: transform .12s; }
+  #dtop h2 .caret { display: inline-flex; transition: transform .12s; }
   #dtop.collapsed .body { display: none; }
   #dtop.collapsed h2 { border-bottom: none; }
   #dtop.collapsed .caret { transform: rotate(-90deg); }
@@ -202,24 +195,22 @@ limitations under the License.
   #dtop .row { display: flex; align-items: baseline; gap: 8px; font-size: 11px; padding: 2px 0; }
   #dtop .row .n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #dtop .row .c { flex: none; color: var(--muted-fg); } #dtop .row .c b { color: var(--info); font-weight: 600; }
-  #dtop .row { cursor: default; border-radius: 5px; margin: 0 -5px; padding-left: 5px; padding-right: 5px; }
-  #dtop .row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+  #dtop .row { cursor: default; border-radius: var(--radius-sm); margin: 0 -5px; padding-left: 5px; padding-right: 5px; }
+  #dtop .row:hover { background: var(--accent); }
   #dtop .empty { color: var(--muted-fg); font-size: 11px; padding: 4px 0; }
   /* full per-worker detail on hover (mirrors the `dimos dtop` TUI) */
   #dtop-tip { position: fixed; z-index: 30; width: 250px; pointer-events: none; opacity: 0;
-    transition: opacity .1s; background: color-mix(in srgb, var(--card) 96%, transparent);
-    border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px;
-    box-shadow: 0 8px 28px rgba(0,0,0,.4); font-size: 11px; color: var(--fg); }
+    transition: opacity .1s; padding: 9px 11px; font-size: 11px; box-shadow: var(--shadow-lg); }
   #dtop-tip.show { opacity: 1; }
   #dtop-tip .th { display: flex; align-items: baseline; gap: 6px; margin-bottom: 5px; }
-  #dtop-tip .th .role { font-weight: 700; letter-spacing: .3px; }
+  #dtop-tip .th .role { font-weight: 600; letter-spacing: .3px; }
   #dtop-tip .th .pid { margin-left: auto; color: var(--muted-fg); font-size: 9px; font-variant-numeric: tabular-nums; }
   #dtop-tip .mods { color: var(--muted-fg); font-size: 10px; margin-bottom: 6px; word-break: break-word; }
   #dtop-tip .kv { display: flex; flex-wrap: wrap; gap: 2px 12px; }
   #dtop-tip .kv span { display: inline-flex; gap: 4px; color: var(--muted-fg); font-variant-numeric: tabular-nums; }
   #dtop-tip .kv span b { color: var(--fg); font-weight: 600; }
   #dtop-tip .ch { margin-top: 6px; border-top: 1px solid var(--border); padding-top: 5px; }
-  #dtop-tip .ch .chd { color: var(--muted-fg); font-size: 9px; letter-spacing: 1px; margin-bottom: 3px; }
+  #dtop-tip .ch .chd { margin-bottom: 3px; }
   #dtop-tip .ch .crow { display: flex; gap: 6px; font-size: 10px; padding: 1px 0; }
   #dtop-tip .ch .crow .cn { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
   #dtop-tip .ch .crow .cp { flex: none; color: var(--muted-fg); font-variant-numeric: tabular-nums; }
@@ -229,37 +220,33 @@ limitations under the License.
     top: 0; left: 0; z-index: 8;
     /* translucent by default (hover preview) so it doesn't hide the graph */
     background: color-mix(in srgb, var(--card) 30%, transparent); backdrop-filter: blur(3px);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+    box-shadow: var(--shadow-sm); }
   #card.show { display: block; }
   /* clicked → pinned: fully opaque + persistent so it reads as a real panel */
   #card.pinned { background: var(--card); backdrop-filter: blur(8px);
-    box-shadow: 0 6px 22px rgba(0,0,0,0.28); border-color: color-mix(in oklch, var(--info) 40%, var(--border)); }
+    box-shadow: var(--shadow-md); border-color: color-mix(in oklch, var(--info) 40%, var(--border)); }
   #card .chd { display: flex; align-items: center; gap: 8px; padding: 10px 12px 8px;
     border-bottom: 1px solid var(--border); position: sticky; top: 0;
     background: color-mix(in srgb, var(--card) 30%, transparent); backdrop-filter: blur(3px); }
   #card.pinned .chd { background: color-mix(in srgb, var(--card) 94%, transparent); backdrop-filter: blur(8px); }
-  #card .chd .badge { font-size: 8px; letter-spacing: 1.5px; font-weight: 700; color: var(--info);
-    border: 1px solid color-mix(in oklch, var(--info) 45%, var(--border)); border-radius: 5px; padding: 2px 5px; }
   #card .chd .nm { font-size: 13px; font-weight: 600; color: var(--fg); }
-  #card .chd .pin { margin-left: auto; font-size: 13px; color: var(--muted-fg); }
+  #card .chd .pin { margin-left: auto; display: inline-flex; font-size: 13px; color: var(--muted-fg); }
   #card.pinned .chd .pin { color: var(--info); }
   #card .cbody { padding: 9px 12px 12px; }
   #card .doc { color: var(--muted-fg); font-size: 11px; line-height: 1.45; white-space: pre-wrap;
     max-height: 7.5em; overflow: hidden; margin-bottom: 4px; }
   #card .sec { margin-top: 9px; }
-  #card .sec > .lbl { font-size: 8px; letter-spacing: 1.5px; font-weight: 700; color: var(--muted-fg);
-    display: block; margin-bottom: 5px; }
+  #card .sec > .lbl { display: block; margin-bottom: 5px; }
   #card .chips { display: flex; flex-wrap: wrap; gap: 4px; }
   #card .chip { font-size: 10px; padding: 2px 8px; border-radius: 999px; white-space: nowrap;
-    border: 1px solid color-mix(in oklch, var(--accent, var(--info)) 50%, var(--border));
+    border: 1px solid color-mix(in oklch, var(--node-accent, var(--info)) 50%, var(--border));
     color: color-mix(in oklch, var(--fg) 68%, var(--muted-fg)); }
-  #card .chip .ty { color: var(--accent, var(--info)); }
+  #card .chip .ty { color: var(--node-accent, var(--info)); }
   #card .chip .rt { color: var(--info); font-weight: 600; margin-left: 3px; }
   #card .chip .rt.idle { color: var(--muted-fg); font-weight: 400; }
   #card .chip .rmp { color: var(--muted-fg); }
-  #card .chip.out { --accent: var(--warn); } #card .chip.in { --accent: var(--ok); }
-  #card .mrow { font-size: 10px; color: color-mix(in oklch, var(--fg) 60%, var(--muted-fg));
-    padding: 1px 0; font-family: ui-monospace, SFMono-Regular, monospace; }
+  #card .chip.out { --node-accent: var(--warn); } #card .chip.in { --node-accent: var(--ok); }
+  #card .mrow { font-size: 10px; color: color-mix(in oklch, var(--fg) 60%, var(--muted-fg)); padding: 1px 0; }
   #card .mrow .ret { color: var(--muted-fg); }
   #card .none { color: var(--muted-fg); font-size: 10px; }
 
@@ -294,7 +281,9 @@ limitations under the License.
   }
 </style>
 </head>
-<body class="science dark">
+<body class="science">
+<script src="dim-theme.js"></script>
+<script type="module" src="dim-icons.js"></script>
 
 <div id="flow">
   <div id="viewport">
@@ -304,7 +293,7 @@ limitations under the License.
 
 <div id="hint">waiting for a running stack — start a blueprint to see modules light up</div>
 
-<div class="bar" id="toolbar">
+<div class="bar dim-panel glass" id="toolbar">
   <span class="logo">MODULE FLOW <span>/ LCM · ZENOH</span></span>
   <span class="sep"></span>
   <span class="readout" id="r-graph"><b>0</b> modules · <b>0</b> topics</span>
@@ -313,12 +302,12 @@ limitations under the License.
   <span id="conn">○ offline</span>
 </div>
 
-<div class="bar" id="layouts"></div>
+<div class="bar dim-tabs" id="layouts" role="tablist"></div>
 
-<div class="bar" id="controls">
-  <button id="zin"  title="zoom in">+</button>
-  <button id="zout" title="zoom out">−</button>
-  <button class="fit" id="fit" title="fit view">FIT</button>
+<div class="bar dim-panel glass" id="controls">
+  <button class="dim-btn ghost icon" id="zin" title="zoom in"><i data-dim-icon="plus"></i></button>
+  <button class="dim-btn ghost icon" id="zout" title="zoom out"><i data-dim-icon="minus"></i></button>
+  <button class="dim-btn ghost icon fit" id="fit" title="fit view">Fit</button>
 </div>
 
 <div id="legend">
@@ -326,34 +315,35 @@ limitations under the License.
   <span class="k"><span class="sw top"></span> topic</span>
 </div>
 
-<div class="bar" id="topics">
-  <h2 id="topics-head"><span class="thd"><span class="caret">▾</span> TOPICS · RATE</span> <span id="topics-count">0</span></h2>
+<div class="bar dim-panel glass" id="topics">
+  <h2 class="dim-label" id="topics-head"><span class="thd"><i class="caret" data-dim-icon="chevron-down"></i> Topics · Rate</span> <span id="topics-count">0</span></h2>
   <div class="thead" id="topics-sort" title="click a column to sort">
     <span class="sp"></span><span class="n">TOPIC</span>
-    <span class="hz sortkey" data-sort="hz">Hz</span>
-    <span class="tp sortkey" data-sort="bps">bit/s</span>
+    <span class="hz sortkey" data-sort="hz">Hz <i class="sort-ind" data-dim-icon="chevron-down"></i></span>
+    <span class="tp sortkey" data-sort="bps">bit/s <i class="sort-ind" data-dim-icon="chevron-down"></i></span>
   </div>
   <div class="body" id="topics-body"></div>
 </div>
 
-<div class="bar show" id="dtop">
-  <h2 id="dtop-head"><span class="thd"><span class="caret">▾</span> WORKERS · CPU/RAM</span> <span id="dtop-status">○ no stream</span></h2>
+<div class="bar dim-panel glass show" id="dtop">
+  <h2 class="dim-label" id="dtop-head"><span class="thd"><i class="caret" data-dim-icon="chevron-down"></i> Workers · CPU/RAM</span> <span id="dtop-status">○ no stream</span></h2>
   <div class="body" id="dtop-body"></div>
 </div>
-<div id="dtop-tip">
+<div class="dim-panel" id="dtop-tip">
 </div>
 
-<div class="bar" id="card"></div>
+<div class="bar dim-panel" id="card"></div>
 
 <div id="help">DRAG pan · SCROLL zoom · HOVER module for card · CLICK pin · G cycle layout · T topics · D workers</div>
 
 <script type="module">
 import { DimAppFrontend } from "https://esm.sh/gh/jeff-hykin/dim-app@v0.5.0/frontend.js";
+import { dimIcon } from "./dim-icons.js";
 "use strict";
 
 // ─────────────────────────────────────────────────────────── color mapping ──
 // Node accent colors are chosen as *theme variable names* (e.g. "--warn") and
-// applied inline as `--accent: var(--warn)`, so the browser resolves them live
+// applied inline as `--node-accent: var(--warn)`, so the browser resolves them live
 // and the whole graph re-themes on light/dark flips with zero JS.
 const TYPE_VARS = {
   Image: "--warn", CompressedImage: "--warn", CameraInfo: "--warn",
@@ -740,6 +730,7 @@ async function setLayout(id) {
 function updateLayoutButtons() {
   for (const b of document.querySelectorAll("#layouts button")) {
     b.classList.toggle("on", b.dataset.layout === layoutId);
+    b.setAttribute("aria-selected", String(b.dataset.layout === layoutId));
   }
 }
 
@@ -776,12 +767,12 @@ function buildDom() {
     if (n.el) continue;
     const el = document.createElement("div");
     el.className = "node " + n.kind;
-    el.style.setProperty("--accent", `var(${n.accent})`);
+    el.style.setProperty("--node-accent", `var(${n.accent})`);
     el.dataset.id = n.id;
     if (n.kind === "module") {
       el.innerHTML =
         `<div class="head"><span class="kind">MOD</span>` +
-        `<span class="name"></span><span class="chev">▶</span></div>` +
+        `<span class="name"></span><span class="chev">${dimIcon("chevron-right")}</span></div>` +
         `<div class="body"></div>` +
         `<span class="handle l"></span><span class="handle r"></span>`;
       el.querySelector(".name").textContent = n.label;
@@ -953,6 +944,8 @@ document.getElementById("fit").onclick = fitView;
 const layoutsEl = document.getElementById("layouts");
 for (const l of LAYOUTS) {
   const b = document.createElement("button");
+  b.className = "dim-tab";
+  b.setAttribute("role", "tab");
   b.textContent = l.label;
   b.dataset.layout = l.id;
   b.title = `${l.label} layout`;
@@ -1040,8 +1033,8 @@ function escapeHtml(s) {
 function moduleCardHtml(n) {
   const info = moduleInfo.get(n.id);
   const label = info?.label || n.label;
-  const head = `<div class="chd"><span class="badge">MOD</span><span class="nm">${escapeHtml(label)}</span>` +
-    `<span class="pin">${cardPinned && cardNode === n ? "📌" : ""}</span></div>`;
+  const head = `<div class="chd"><span class="dim-badge info">MOD</span><span class="nm">${escapeHtml(label)}</span>` +
+    `<span class="pin">${cardPinned && cardNode === n ? dimIcon("target") : ""}</span></div>`;
   if (!info) return head + `<div class="cbody"><span class="none">no blueprint metadata</span></div>`;
   const stats = topicWindowStats();
   // stats are keyed by topic *node* id (one per publisher instance), so resolve a
@@ -1068,10 +1061,10 @@ function moduleCardHtml(n) {
     : `<span class="none">none</span>`;
   return head + `<div class="cbody">` +
     (info.doc ? `<div class="doc">${escapeHtml(info.doc)}</div>` : "") +
-    `<div class="sec"><span class="lbl">Publishes ${info.outputs.length}</span>${chips(info.outputs, "out")}</div>` +
-    `<div class="sec"><span class="lbl">Subscribes ${info.inputs.length}</span>${chips(info.inputs, "in")}</div>` +
-    (info.skills.length ? `<div class="sec"><span class="lbl">Skills</span>${methods(info.skills)}</div>` : "") +
-    (info.rpcs.length ? `<div class="sec"><span class="lbl">RPCs</span>${methods(info.rpcs)}</div>` : "") +
+    `<div class="sec"><span class="lbl dim-label">Publishes ${info.outputs.length}</span>${chips(info.outputs, "out")}</div>` +
+    `<div class="sec"><span class="lbl dim-label">Subscribes ${info.inputs.length}</span>${chips(info.inputs, "in")}</div>` +
+    (info.skills.length ? `<div class="sec"><span class="lbl dim-label">Skills</span>${methods(info.skills)}</div>` : "") +
+    (info.rpcs.length ? `<div class="sec"><span class="lbl dim-label">RPCs</span>${methods(info.rpcs)}</div>` : "") +
     `</div>`;
 }
 function positionCard(n) {
@@ -1185,7 +1178,8 @@ function humanBits(bytesPerSec) {
 // band a straight 210→8 ramp would pass through.
 function heatColor(frac) {
   const f = Math.max(0, Math.min(1, frac));
-  return `hsl(${(210 + 150 * f).toFixed(0)} 85% 62%)`;
+  const lightness = document.body.classList.contains("dark") ? 62 : 46;   // readable on either theme
+  return `hsl(${(210 + 150 * f).toFixed(0)} 85% ${lightness}%)`;
 }
 // normalize on a log scale (rates/mem span orders of magnitude) → 0..1 vs a max.
 function heatFracLog(value, max) {
@@ -1200,7 +1194,7 @@ const dimApp = new DimAppFrontend();
 dimApp.receiveRequest((tag, msg) => {
   if (tag !== "lcmflow" || !msg) return;
   lastMsg = Date.now();
-  connEl.textContent = "▮ live"; connEl.className = "live";
+  connEl.textContent = "● live"; connEl.className = "live";
   if (msg.kind === "graph") applyGraph(msg);
   else if (msg.kind === "dtop") { dtopData = msg.data; dtopAt = Date.now(); }
   else if (msg.kind === "packets") handlePackets(msg.events);
@@ -1347,7 +1341,7 @@ function renderTopics(tops, stats) {
         const tpCol = heatColor(heatFracLog(r.bps, maxBps));
         const idleHz = r.lastAt ? `<span class="ago">${agoText(now - r.lastAt)}</span>` : "—";
         const tip = r.lastAt ? ` title="${r.count} msg${r.count === 1 ? "" : "s"} · last ${agoText(now - r.lastAt)}"` : "";
-        return `<div class="trow ${r.live ? "live" : "idle"}" style="--accent:var(${r.accent})"${tip}>` +
+        return `<div class="trow ${r.live ? "live" : "idle"}" style="--node-accent:var(${r.accent})"${tip}>` +
           `<span class="dot"></span><span class="n">${escapeHtml(r.label)}</span>` +
           `<span class="hz">${r.live ? `<b style="color:${hzCol}">${r.hz.toFixed(1)}</b> Hz` : idleHz}</span>` +
           `<span class="tp"${r.live ? ` style="color:${tpCol}"` : ""}>${r.live ? humanBits(r.bps) : "—"}</span></div>`;
@@ -1418,7 +1412,7 @@ function dtopTipHtml(r) {
     kv("IO↑", human(x.io_write_bytes ?? 0)) +
     `</div>`;
   const kids = Array.isArray(x.children) && x.children.length
-    ? `<div class="ch"><div class="chd">CHILD PROCS ${x.children.length}</div>` +
+    ? `<div class="ch"><div class="chd dim-label">Child procs ${x.children.length}</div>` +
       x.children.map((c) => `<div class="crow"><span class="cn">${escapeHtml(c.name || "?")} <span style="color:var(--muted-fg)">${c.pid ?? ""}</span></span>` +
         `<span class="cp">${(c.cpu_percent ?? 0).toFixed(0)}%</span></div>`).join("") + `</div>`
     : "";
