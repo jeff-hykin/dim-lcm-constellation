@@ -1034,7 +1034,7 @@ function moduleCardHtml(n) {
   const info = moduleInfo.get(n.id);
   const label = info?.label || n.label;
   const head = `<div class="chd"><span class="dim-badge info">MOD</span><span class="nm">${escapeHtml(label)}</span>` +
-    `<span class="pin">${cardPinned && cardNode === n ? dimIcon("target") : ""}</span></div>`;
+    `<span class="pin">${cardPinned && cardNode === n ? dimIcon("pin") : ""}</span></div>`;
   if (!info) return head + `<div class="cbody"><span class="none">no blueprint metadata</span></div>`;
   const stats = topicWindowStats();
   // stats are keyed by topic *node* id (one per publisher instance), so resolve a

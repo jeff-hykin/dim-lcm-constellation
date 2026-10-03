@@ -9,6 +9,7 @@ export const DIM_ICON_PATHS = {
     tree: "M6 4v16M6 8h6m-6 8h6m6-12v4h-6m6 4v4h-6",
     settings: "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm7.4 3a7.4 7.4 0 0 0-.1-1.3l2-1.5-2-3.4-2.3 1a7.3 7.3 0 0 0-2.2-1.3L14.5 2h-5l-.3 2.5A7.3 7.3 0 0 0 7 5.8l-2.3-1-2 3.4 2 1.5a7.4 7.4 0 0 0 0 2.6l-2 1.5 2 3.4 2.3-1a7.3 7.3 0 0 0 2.2 1.3l.3 2.5h5l.3-2.5a7.3 7.3 0 0 0 2.2-1.3l2.3 1 2-3.4-2-1.5c.1-.4.1-.9.1-1.3Z",
     fullscreen: "M4 9V4h5M20 9V4h-5M4 15v5h5m11-5v5h-5",
+    "fullscreen-exit": "M9 4v5H4M15 4v5h5M9 20v-5H4m11 5v-5h5",
     close: "M6 6l12 12M18 6 6 18",
     expand: "M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7",
     plus: "M12 5v14M5 12h14",
@@ -51,6 +52,10 @@ export const DIM_ICON_PATHS = {
     keyboard: "M3 6h18v12H3zM7 10h.01M11 10h.01M15 10h.01M7 14h10",
     gamepad: "M6 8h12a4 4 0 0 1 4 4v2a3 3 0 0 1-5.4 1.8L15 14H9l-1.6 1.8A3 3 0 0 1 2 14v-2a4 4 0 0 1 4-4Zm2 2v4m-2-2h4m6-1h.01M17 13h.01",
     robot: "M12 3v3M6 8h12v10H6zM9 12h.01M15 12h.01M9 15h6M3 12v3M21 12v3",
+    pin: "M9 4h6l-1 5 3 3v2H7v-2l3-3-1-5Zm3 10v7",
+    edit: "M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4",
+    search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm9 16-4-4",
+    "more-horizontal": "M5 12h.01M12 12h.01M19 12h.01",
     map: "M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Zm0 0v14m6-12v14",
 }
 
