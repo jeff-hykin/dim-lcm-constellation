@@ -56,6 +56,13 @@ export const DIM_ICON_PATHS = {
     edit: "M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4",
     search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm9 16-4-4",
     "more-horizontal": "M5 12h.01M12 12h.01M19 12h.01",
+    shrink: "M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7",
+    pointer: "M5 3l14 7-6 2-2 6L5 3Z",
+    eraser: "M8 20h12M5 15l9-9 5 5-8 8H8l-3-3Zm4-4 5 5",
+    ruler: "M3 17 17 3l4 4L7 21l-4-4Zm4-4 2 2m1-5 2 2m1-5 2 2",
+    line: "M5 19 19 5M5 19h.01M19 5h.01",
+    polygon: "M12 3l9 7-3.5 10h-11L3 10l9-7Z",
+    cube: "M12 3 4 7.5v9L12 21l8-4.5v-9L12 3Zm-8 4.5 8 4.5 8-4.5M12 12v9",
     map: "M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Zm0 0v14m6-12v14",
 }
 
