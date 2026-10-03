@@ -6,6 +6,9 @@
 // For resource_stats channels it also emits the raw payload (base64) so the JS
 // launcher can decode the dtop pickle:
 //   {"kind":"raw","transport":...,"channel":...,"b64":...}
+// A line `sample <channel>` on stdin asks for the next message on that exact channel; it comes back once as
+//   {"kind":"sample","transport":...,"channel":...,"size":<payload bytes>,"b64":<first SAMPLE_BYTES bytes>}
+// (for a fragmented LCM message, the start of its first fragment).
 //
 //   - LCM:   UDP multicast 239.255.76.67:7667 (small + fragmented wire format).
 //   - Zenoh: peer-mode session with a `**` subscriber (matches dimos zenoh 1.x,
@@ -14,8 +17,8 @@
 
 use base64::Engine;
 use socket2::{Domain, Protocol, Socket, Type};
-use std::collections::HashMap;
-use std::io::Write;
+use std::collections::{HashMap, HashSet};
+use std::io::{BufRead, Write};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -27,9 +30,12 @@ const MAGIC_LONG: u32 = 0x4c43_3033; // "LC03"
 const SHORT_HEADER_SIZE: usize = 8;
 const FRAGMENT_HEADER_SIZE: usize = 20;
 const FLUSH_MS: u64 = 50;
+const SAMPLE_BYTES: usize = 4096;
 
 // (transport, channel) -> (count, bytes)
 type Agg = Arc<Mutex<HashMap<(String, String), (u64, u64)>>>;
+// channels a `sample <channel>` asked for, answered by the next message on each
+type Wanted = Arc<Mutex<HashSet<String>>>;
 
 fn be_u32(b: &[u8], o: usize) -> u32 {
     u32::from_be_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]])
@@ -49,6 +55,27 @@ fn emit_raw(transport: &str, channel: &str, bytes: &[u8]) {
     let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
     let value = serde_json::json!({"kind":"raw","transport":transport,"channel":channel,"b64":b64});
     emit(&value.to_string());
+}
+
+fn maybe_sample(wanted: &Wanted, transport: &str, channel: &str, size: u64, bytes: &[u8]) {
+    let mut set = wanted.lock().unwrap();
+    if set.is_empty() || !set.remove(channel) {
+        return;
+    }
+    drop(set);
+    let head = &bytes[..bytes.len().min(SAMPLE_BYTES)];
+    let b64 = base64::engine::general_purpose::STANDARD.encode(head);
+    let value = serde_json::json!({"kind":"sample","transport":transport,"channel":channel,"size":size,"b64":b64});
+    emit(&value.to_string());
+}
+
+fn stdin_loop(wanted: Wanted) {
+    for line in std::io::stdin().lock().lines() {
+        let Ok(line) = line else { return };
+        if let Some(channel) = line.strip_prefix("sample ") {
+            wanted.lock().unwrap().insert(channel.to_string());
+        }
+    }
 }
 
 fn record(agg: &Agg, transport: &str, channel: &str, bytes: u64) {
@@ -85,7 +112,7 @@ fn flush_loop(agg: Agg) {
     }
 }
 
-fn lcm_loop(agg: Agg) -> std::io::Result<()> {
+fn lcm_loop(agg: Agg, wanted: Wanted) -> std::io::Result<()> {
     let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
     socket.set_reuse_address(true)?;
     #[cfg(unix)]
@@ -115,6 +142,7 @@ fn lcm_loop(agg: Agg) -> std::io::Result<()> {
                 if let Ok(channel) = std::str::from_utf8(&packet[start..end]) {
                     let payload = &packet[end + 1..];
                     record(&agg, "lcm", channel, payload.len() as u64);
+                    maybe_sample(&wanted, "lcm", channel, payload.len() as u64, payload);
                     if channel.contains("resource_stats") {
                         emit_raw("lcm", channel, payload);
                     }
@@ -135,13 +163,14 @@ fn lcm_loop(agg: Agg) -> std::io::Result<()> {
                 let end = start + rel;
                 if let Ok(channel) = std::str::from_utf8(&packet[start..end]) {
                     record(&agg, "lcm", channel, payload_size);
+                    maybe_sample(&wanted, "lcm", channel, payload_size, &packet[end + 1..]);
                 }
             }
         }
     }
 }
 
-async fn start_zenoh(agg: Agg) -> Option<zenoh::Session> {
+async fn start_zenoh(agg: Agg, wanted: Wanted) -> Option<zenoh::Session> {
     let session = match zenoh::open(zenoh::Config::default()).await {
         Ok(session) => session,
         Err(err) => {
@@ -155,6 +184,9 @@ async fn start_zenoh(agg: Agg) -> Option<zenoh::Session> {
             let channel = sample.key_expr().as_str().to_string();
             let payload = sample.payload();
             record(&agg, "zenoh", &channel, payload.len() as u64);
+            if !wanted.lock().unwrap().is_empty() {
+                maybe_sample(&wanted, "zenoh", &channel, payload.len() as u64, &payload.to_bytes());
+            }
             if channel.contains("resource_stats") {
                 emit_raw("zenoh", &channel, &payload.to_bytes());
             }
@@ -174,6 +206,11 @@ async fn start_zenoh(agg: Agg) -> Option<zenoh::Session> {
 #[tokio::main]
 async fn main() {
     let agg: Agg = Arc::new(Mutex::new(HashMap::new()));
+    let wanted: Wanted = Arc::new(Mutex::new(HashSet::new()));
+    {
+        let wanted = wanted.clone();
+        std::thread::spawn(move || stdin_loop(wanted));
+    }
 
     {
         let agg = agg.clone();
@@ -181,15 +218,16 @@ async fn main() {
     }
     {
         let agg = agg.clone();
+        let wanted = wanted.clone();
         std::thread::spawn(move || {
-            if let Err(err) = lcm_loop(agg) {
+            if let Err(err) = lcm_loop(agg, wanted) {
                 eprintln!("spy: lcm error: {err}");
             }
         });
     }
 
     // Keep the session alive for the process lifetime.
-    let _session = start_zenoh(agg.clone()).await;
+    let _session = start_zenoh(agg.clone(), wanted.clone()).await;
 
     std::future::pending::<()>().await;
 }

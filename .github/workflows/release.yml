@@ -18,7 +18,7 @@ permissions:
 
 defaults:
     run:
-        working-directory: dim/apps/lcmflow/spy
+        working-directory: spy
 
 jobs:
     build:
@@ -69,7 +69,7 @@ jobs:
             - uses: actions/upload-artifact@v4
               with:
                   name: ${{ matrix.asset }}
-                  path: dim/apps/lcmflow/spy/${{ matrix.asset }}
+                  path: spy/${{ matrix.asset }}
 
     release:
         needs: build

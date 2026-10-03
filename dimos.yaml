@@ -1,6 +1,115 @@
-# A dimOS Desktop app. Format: https://github.com/dimensionalOS/dimos-desktop/blob/jeff/rust_desktop/docs/apps.md
 title: LCM Constellation
 dimos-desktop-api: ">=2 <3"
 dimos-api:
     - GET /dimos/runs
-    - GET /dimos/blueprints/{name}
+    - "GET /dimos/blueprints/{name}"
+caches:
+    - url: "https://dimos-desktop.cachix.org"
+      key: "dimos-desktop.cachix.org-1:A4P35aGJGmCan92LWyamtSFXMqaVE+VRFYnrJ8QMTeQ="
+agent:
+    description: >-
+        LCM Constellation: live LCM and Zenoh traffic (every channel's rate and message size) over the running blueprint's
+        module graph, plus dtop's per-worker CPU/RAM
+    endpoints:
+        - method: GET
+          path: api/state
+          description: >-
+              Overview: the running blueprint, module/topic counts, total rate and bandwidth, the busiest topics, paused or
+              not, the spy's status, workers and the view settings
+          role: context
+        - method: GET
+          path: api/topics
+          description: >-
+              Every LCM/Zenoh channel seen (and blueprint topics with no traffic yet, declaredOnly): rate (hz), bandwidth
+              (bytesPerSec), average message size, total messages, last seen, publishing/subscribing modules
+          params:
+              filter:
+                  type: string
+                  description: only topics whose channel or message type contains this (case-insensitive)
+              transport:
+                  type: string
+                  description: "all (default), lcm or zenoh"
+              active:
+                  type: boolean
+                  description: only topics with traffic in the last 5 s
+              sort:
+                  type: string
+                  description: "bps (default: bandwidth), hz, messages or name"
+              limit:
+                  type: number
+                  description: at most this many rows
+        - method: GET
+          path: api/topic
+          description: >-
+              One topic in detail: its channel(s) (exact channel, or every channel with that bare name), rate, sizes, a
+              per-second history of the last 60 s, and the modules on it
+          params:
+              topic:
+                  type: string
+                  required: true
+                  description: "a channel (/odom#nav_msgs.Odometry) or bare name (odom)"
+        - method: POST
+          path: api/topic/sample
+          description: >-
+              Wait for the next message on a topic and return its size and the first bytes (hex + printable text; an LCM
+              message starts with its type fingerprint)
+          params:
+              topic:
+                  type: string
+                  required: true
+                  description: a channel or bare name seen in api/topics
+              timeoutMs:
+                  type: number
+                  description: "how long to wait (default 3000, max 15000)"
+        - method: GET
+          path: api/graph
+          description: 'The running blueprint''s module graph: modules (with in/out streams) and module→topic edges'
+        - method: POST
+          path: api/graph/refresh
+          description: Re-read the running blueprint from Desktop now (it is also re-read every 4 s)
+        - method: GET
+          path: api/workers
+          description: >-
+              dtop: per-worker CPU, memory (PSS), threads, IO and modules, from /resource_stats (needs a blueprint run with
+              --dtop)
+        - method: POST
+          path: api/pause
+          description: "Freeze the traffic readings (rates, counts and the animation hold their current values)"
+        - method: POST
+          path: api/resume
+          description: Resume live traffic readings after a pause
+        - method: POST
+          path: api/reset
+          description: Forget every channel's counts and history (the graph stays)
+        - method: GET
+          path: api/settings
+          description: "What the page shows: layout, topic table sort/filter/transport, which panels are open, the pinned module card"
+        - method: POST
+          path: api/settings
+          description: Change what every open page shows; only the fields given change
+          params:
+              layout:
+                  type: string
+                  description: "graph layout: hierarchy, organic, force, radial, circular"
+              sort:
+                  type: string
+                  description: "topic table order: bps, hz, messages or name"
+              filter:
+                  type: string
+                  description: topic table filter text (empty for none)
+              transport:
+                  type: string
+                  description: "topic table transport: all, lcm or zenoh"
+              showTopics:
+                  type: boolean
+                  description: show the topics table
+              showWorkers:
+                  type: boolean
+                  description: show the workers (dtop) panel
+              pinnedModule:
+                  type: string
+                  description: pin this module's card open (null or "" to unpin)
+        - method: GET
+          path: api/view
+          description: "The graph as the user sees it, as an image (needs the page open)"
+          role: view

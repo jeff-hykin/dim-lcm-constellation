@@ -1,61 +1,46 @@
 # dim-lcm-constellation
 
-A [dimOS Desktop](https://github.com/dimensionalOS/dimos-desktop) app that visualizes
-**live LCM traffic** as a constellation: modules and topics are nodes, and every
-packet on the wire lights up the edge it travelled along.
+A [dimOS Desktop](https://github.com/dimensionalOS/dimos-desktop) app that shows **live LCM and Zenoh traffic** over the
+running blueprint's module graph: modules and topics are nodes, each topic shows its live rate, and every packet lights
+up the edges it travelled along. A topics table gives each channel's rate and bandwidth, and a workers panel shows
+dtop's per-worker CPU/RAM (from `/resource_stats`, for blueprints run with `--dtop`).
 
-- **Constellation** — the module↔topic topology recovered from the newest DimOS
-  run log, drawn as a graph. Live packets spawn particles that flow along each
-  edge, so you can see at a glance which channels are hot.
-- **dtop** — per-worker resource stats (folded in from the old `lcm_spy` app),
-  decoded straight from the `/dimos/resource_stats` LCM channel.
-
-| Constellation | Live traffic |
-| --- | --- |
+| Constellation                                         | Live traffic                           |
+| ----------------------------------------------------- | -------------------------------------- |
 | ![Module/topic constellation](docs/constellation.png) | ![Live LCM packet flow](docs/live.png) |
 
 ## How it works
 
-The backend (`main.js`) runs inside the Deno desktop process and subscribes to
-**every** LCM channel via a vendored `@dimos/lcm`. It reads *metadata only*
-(`{channel, count, bytes}`, batched every 50 ms) — payloads are never decoded —
-and forwards those frames to the browser over the app-bus. The module↔topic
-topology comes from dimOS Desktop's `/dimos/runs` (the newest running blueprint)
-and `/dimos/blueprints/<name>` (its modules' streams), rescanned periodically, so
-the graph follows whatever blueprint is running.
+- `spy/` (Rust) passively sniffs LCM (UDP multicast 239.255.76.67:7667) and Zenoh (a peer `**` subscriber) and prints
+  NDJSON metadata (channel, count, bytes) every 50 ms; payloads are never decoded, except `/resource_stats` and a
+  `sample <channel>` asked for on stdin.
+- `backend/` (Deno) runs the spy, keeps every channel's 5 s rate, sizes and 60 s history, reads the running blueprint
+  from Desktop (`/dimos/runs`, `/dimos/blueprints/<name>`), and serves it all as HTTP endpoints (`backend/routes.ts`),
+  which `dimos.yaml`'s `agent:` lists, so Desktop's agent can call everything the page does. Pages follow changes on
+  `api/events/ws`.
+- `frontend/` (TypeScript, Vite, React) draws the graph (DOM nodes + an SVG edge layer, force or Graphviz layouts).
 
-> The vendored `lcm_vendor/` is `@dimos/lcm@0.2.0` with a local fix: upstream
-> never joins the multicast group, so its receive path saw zero packets. Swap
-> back to the jsr import once the fix lands upstream.
+Endpoints include `GET api/topics` (rate, bandwidth, message size, last seen, publishers/subscribers per channel),
+`GET api/topic`, `POST api/topic/sample`, `GET api/graph`, `GET api/workers`, `POST api/pause|resume|reset`,
+`POST api/settings` (layout, table sort/filter, panels, pinned module card), `GET api/view` (the graph as a PNG).
 
 ## Install
 
-### dimOS Desktop
+```sh
+dimos-desktop install https://github.com/jeff-hykin/dim-lcm-constellation
+```
+
+Desktop builds it with `nix build .#dimosApp`, which compiles the spy and the frontend.
+
+## Develop
 
 ```sh
-dimos-desktop install https://github.com/jeff-hykin/dim-lcm-constellation --ref dimos-desktop2
+(cd spy && cargo build --release)       # the backend finds spy/target/release/spy
+(cd frontend && npm install && npm run build)
+deno task dev                           # http://localhost:8787 (vite dev: cd frontend && npm run dev)
+deno task test && deno task check       # check also verifies dimos.yaml lists every endpoint
 ```
 
-Desktop builds it with `nix build .#dimosApp`, which compiles the `spy` from source and wraps the backend as a
-`dimos-app-server`.
-
-### Old dashboard
-
-```sh
-dim install https://github.com/jeff-hykin/dim-lcm-constellation
-```
-
-The app appears in the dashboard rail within a few seconds.
-
-## Layout
-
-```
-dim/apps/lcmflow/
-  app.yaml        title
-  frontend/
-    index.html    the constellation view (frontend)
-  main.js         backend — LCM sniff + topology, relayed over the app-bus
-  lcm_vendor/     vendored @dimos/lcm (multicast-join fix)
-```
+The `release` workflow also publishes prebuilt `spy-<platform>` binaries (used by `dtk constellation`).
 
 Licensed under Apache-2.0.

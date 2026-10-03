@@ -1,27 +1,41 @@
 {
-    description = "dim-lcm-constellation: live LCM/Zenoh traffic over a blueprint's module graph, as a dimOS Desktop app";
+    description = "LCM Constellation: live LCM/Zenoh traffic over a blueprint's module graph, as a dimOS Desktop app. `nix build .#dimosApp` → bin/dimos-app-server (Deno backend + the native spy + built React frontend)";
 
     # unstable: the spy's dependencies need a newer rustc than nixos-25.05 has
     inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    inputs.dim-app.url = "github:jeff-hykin/dim-app/v0.6.1";
-
-    outputs = { self, nixpkgs, dim-app }: {
-        packages = dim-app.lib.forAllSystems nixpkgs (pkgs: rec {
-            # the LCM/Zenoh sniffer the backend runs
-            spy = pkgs.rustPlatform.buildRustPackage {
-                pname = "constellation-spy";
-                version = "0.1.0";
-                src = ./dim/apps/lcmflow/spy;
-                cargoLock.lockFile = ./dim/apps/lcmflow/spy/Cargo.lock;
-                doCheck = false;
-                meta.mainProgram = "spy";
-            };
-            # dim-app's serve.js (what mkDimosApp wraps), plus the spy's store path for main.js
-            dimosApp = pkgs.writeShellScriptBin "dimos-app-server" ''
-                export LCMFLOW_SPY=${spy}/bin/spy
-                exec ${pkgs.deno}/bin/deno run -A --no-lock ${dim-app}/serve.js \
-                    --frontend ${self}/dim/apps/lcmflow/frontend --backend ${self}/dim/apps/lcmflow/main.js "$@"
-            '';
-        });
+    nixConfig = {
+        extra-substituters = [ "https://dimos-desktop.cachix.org" ];
+        extra-trusted-public-keys = [ "dimos-desktop.cachix.org-1:A4P35aGJGmCan92LWyamtSFXMqaVE+VRFYnrJ8QMTeQ=" ];
     };
+
+    outputs = { self, nixpkgs }:
+        let
+            systems = [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" "aarch64-linux" ];
+            forAll = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
+        in {
+            packages = forAll (pkgs: rec {
+                # the LCM/Zenoh sniffer the backend runs (stdout: NDJSON traffic metadata)
+                spy = pkgs.rustPlatform.buildRustPackage {
+                    pname = "constellation-spy";
+                    version = "0.1.0";
+                    src = ./spy;
+                    cargoLock.lockFile = ./spy/Cargo.lock;
+                    doCheck = false;
+                    meta.mainProgram = "spy";
+                };
+                frontend = pkgs.buildNpmPackage {
+                    pname = "lcm-constellation-frontend";
+                    version = "0.1.0";
+                    src = ./frontend;
+                    # `nix build .#frontend` prints the right hash when package-lock.json changes
+                    npmDepsHash = "sha256-SnPwokE4iJVnJ71rWkJ40jYdMCLWYf+cLZKIbx5mHMU=";
+                    installPhase = "cp -r dist $out";
+                };
+                dimosApp = pkgs.writeShellScriptBin "dimos-app-server" ''
+                    export LCMFLOW_SPY=${spy}/bin/spy
+                    exec ${pkgs.deno}/bin/deno run -A --no-lock ${./backend}/main.ts --frontend ${frontend} "$@"
+                '';
+                default = dimosApp;
+            });
+        };
 }
