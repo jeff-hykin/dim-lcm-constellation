@@ -10,7 +10,7 @@
         "indentWidth": 4,
         "semiColons": false,
         "lineWidth": 120,
-        "exclude": ["frontend/dist", "frontend/node_modules"]
+        "exclude": ["frontend/dist", "frontend/node_modules", "icon.svg"]
     },
     "lint": { "exclude": ["frontend/dist", "frontend/node_modules"] }
 }
