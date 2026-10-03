@@ -3,7 +3,7 @@
 
     # unstable: the spy's dependencies need a newer rustc than nixos-25.05 has
     inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    inputs.dim-app.url = "github:jeff-hykin/dim-app/v0.5.0";
+    inputs.dim-app.url = "github:jeff-hykin/dim-app/v0.6.0";
 
     outputs = { self, nixpkgs, dim-app }: {
         packages = dim-app.lib.forAllSystems nixpkgs (pkgs: rec {

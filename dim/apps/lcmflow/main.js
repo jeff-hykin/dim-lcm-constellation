@@ -11,7 +11,7 @@
 // dim's desktop only auto-launches a `main.js`/`main.py` backend (no native-binary
 // hook), so this JS shim is the entrypoint; the actual protocol spying is Rust.
 
-import { DimAppBackend } from "https://esm.sh/gh/jeff-hykin/dim-app@v0.5.0/backend.js"
+import { DimAppBackend } from "https://esm.sh/gh/jeff-hykin/dim-app@v0.6.0/backend.js"
 
 const GRAPH_RESCAN_MS = 4000
 const SPY_RESTART_MS = 2000
