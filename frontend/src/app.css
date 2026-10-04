@@ -574,7 +574,8 @@ html, body {
 #dtop {
     top: 12px;
     right: 12px;
-    width: 264px;
+    min-width: 264px;
+    max-width: calc(100vw - 24px);
     z-index: 6;
     padding: 0;
     display: none;
@@ -590,6 +591,7 @@ html, body {
     justify-content: space-between;
     gap: 12px;
     white-space: nowrap; /* Portal's wide-tracked Michroma wrapped the title and its status into four lines */
+    flex-wrap: wrap; /* on a phone the status takes its own line instead */
     cursor: pointer;
     user-select: none;
 }
