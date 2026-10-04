@@ -84,7 +84,7 @@ html, body {
     opacity: 0.26;
 }
 .node.hi {
-    border-color: color-mix(in oklch, var(--node-accent, var(--info)) 70%, var(--border));
+    border-color: color-mix(in srgb, var(--node-accent, var(--info)) 70%, transparent);
     box-shadow: 0 0 0 1px var(--node-accent, var(--info)), var(--shadow-md);
 }
 .node.pulse {
@@ -94,8 +94,8 @@ html, body {
 /* module = rounded card with a left accent rail + header row */
 .node.module {
     min-width: 152px;
-    background: color-mix(in oklch, var(--card) 88%, var(--info) 12%);
-    border-color: color-mix(in oklch, var(--info) 44%, var(--border));
+    background: linear-gradient(color-mix(in srgb, var(--info) 12%, transparent), color-mix(in srgb, var(--info) 12%, transparent)) var(--card);
+    border-color: color-mix(in srgb, var(--info) 44%, transparent);
 }
 .node.module::before {
     content: "";
@@ -193,12 +193,12 @@ html, body {
     padding: 3px 11px;
     border-radius: 999px;
     border-width: 1.5px;
-    border-color: color-mix(in oklch, var(--node-accent, var(--info)) 80%, var(--border));
+    border-color: color-mix(in srgb, var(--node-accent, var(--info)) 80%, transparent);
 }
 .node.topic .name {
     font-size: 11px;
     font-weight: 600;
-    color: color-mix(in oklch, var(--fg) 62%, var(--muted-fg));
+    color: var(--fg);
     white-space: nowrap;
     line-height: 1.3;
 }
@@ -233,13 +233,13 @@ html, body {
 .node.topic.orphan {
     border-style: dashed;
     --node-accent: var(--muted-fg);
-    border-color: color-mix(in oklch, var(--muted-fg) 42%, var(--border));
+    border-color: color-mix(in srgb, var(--muted-fg) 42%, transparent);
 }
 /* floating "recent activity" topic — seen live in the last 5min but not declared
    in the blueprint (e.g. cancel_goal). Dotted ring + a small LIVE tag flag it. */
 .node.topic.recent {
     border-style: dotted;
-    border-color: color-mix(in oklch, var(--node-accent, var(--info)) 75%, var(--border));
+    border-color: color-mix(in srgb, var(--node-accent, var(--info)) 75%, transparent);
 }
 .node.topic.recent .rate::before {
     content: "recent · ";
@@ -282,7 +282,7 @@ html, body {
     border-radius: 999px;
     color: var(--muted-fg);
     background: color-mix(in srgb, var(--bg) 85%, transparent);
-    border: 1px dashed color-mix(in oklch, var(--muted-fg) 40%, var(--border));
+    border: 1px dashed color-mix(in srgb, var(--muted-fg) 40%, transparent);
 }
 
 /* ── chrome: toolbar, controls, legend (look = .dim-panel.glass / .dim-tabs / .dim-btn) ── */
@@ -299,16 +299,11 @@ html, body {
     padding: 8px 14px;
     font-size: 11px;
 }
-#toolbar .logo {
-    font-size: 11.5px;
-    font-weight: 600;
-    letter-spacing: var(--track-label);
-    color: var(--info);
-}
 #toolbar .logo span {
+    font: 500 10px var(--mono);
     color: var(--muted-fg);
-    font-weight: 400;
     letter-spacing: 0.1em;
+    text-transform: uppercase;
 }
 #toolbar .sep {
     width: 1px;
@@ -386,7 +381,7 @@ html, body {
 }
 #legend .sw.top {
     border-radius: 999px;
-    border-color: color-mix(in oklch, var(--info) 45%, var(--border));
+    border-color: color-mix(in srgb, var(--info) 45%, transparent);
 }
 
 #help {
@@ -757,7 +752,7 @@ html, body {
     background: var(--card);
     backdrop-filter: blur(8px);
     box-shadow: var(--shadow-md);
-    border-color: color-mix(in oklch, var(--info) 40%, var(--border));
+    border-color: color-mix(in srgb, var(--info) 40%, transparent);
 }
 #card .chd {
     display: flex;
@@ -817,8 +812,8 @@ html, body {
     padding: 2px 8px;
     border-radius: 999px;
     white-space: nowrap;
-    border: 1px solid color-mix(in oklch, var(--node-accent, var(--info)) 50%, var(--border));
-    color: color-mix(in oklch, var(--fg) 68%, var(--muted-fg));
+    border: 1px solid color-mix(in srgb, var(--node-accent, var(--info)) 50%, transparent);
+    color: var(--fg);
 }
 #card .chip .ty {
     color: var(--node-accent, var(--info));
@@ -843,7 +838,7 @@ html, body {
 }
 #card .mrow {
     font-size: 10px;
-    color: color-mix(in oklch, var(--fg) 60%, var(--muted-fg));
+    color: var(--fg);
     padding: 1px 0;
 }
 #card .mrow .ret {

@@ -996,7 +996,7 @@ export class FlowGraph {
 
     // ── animation ──
     private refreshEdges() {
-        const rest = "color-mix(in oklch, var(--muted-fg) 55%, var(--border))"
+        const rest = "color-mix(in srgb, var(--muted-fg) 55%, transparent)"
         for (const e of this.edges) {
             if (!e.el) {
                 continue

@@ -187,8 +187,8 @@ export function App() {
             {hint && <div id="hint">{hint}</div>}
 
             <div className="bar dim-panel glass" id="toolbar">
-                <span className="logo">
-                    MODULE FLOW <span>/ LCM · ZENOH</span>
+                <span className="logo dim-title">
+                    Module flow <span>/ LCM · ZENOH</span>
                 </span>
                 <span className="sep" />
                 <span className="readout">

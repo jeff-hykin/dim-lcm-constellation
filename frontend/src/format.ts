@@ -128,11 +128,11 @@ export function humanSecs(value: unknown): string {
     return Math.floor(s / 3600) + "h " + Math.round((s % 3600) / 60) + "m"
 }
 
-/** value → cool→hot color (blue = low, red = high), skipping the green band. */
+/** value → cool→hot color in four steps of the theme's palette (dim, data blue, accent, warn): the design docs
+ * allow one accent plus status colors, so no hue ramp (it ran through magenta). */
 export function heatColor(fraction: number): string {
     const f = Math.max(0, Math.min(1, fraction))
-    const lightness = document.body.classList.contains("dark") ? 62 : 46
-    return `hsl(${(210 + 150 * f).toFixed(0)} 85% ${lightness}%)`
+    return f < 0.25 ? "var(--muted-fg)" : f < 0.5 ? "var(--info)" : f < 0.8 ? "var(--primary)" : "var(--warn)"
 }
 
 /** log-scale 0..1 against a max (rates and memory span orders of magnitude) */
