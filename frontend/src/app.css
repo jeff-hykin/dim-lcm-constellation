@@ -94,7 +94,10 @@ html, body {
 /* module = rounded card with a left accent rail + header row */
 .node.module {
     min-width: 152px;
-    background: linear-gradient(color-mix(in srgb, var(--info) 12%, transparent), color-mix(in srgb, var(--info) 12%, transparent)) var(--card);
+    background: linear-gradient(
+        color-mix(in srgb, var(--info) 12%, transparent),
+        color-mix(in srgb, var(--info) 12%, transparent)
+    ) var(--card);
     border-color: color-mix(in srgb, var(--info) 44%, transparent);
 }
 .node.module::before {
@@ -585,6 +588,8 @@ html, body {
     border-bottom: 1px solid var(--border);
     display: flex;
     justify-content: space-between;
+    gap: 12px;
+    white-space: nowrap; /* Portal's wide-tracked Michroma wrapped the title and its status into four lines */
     cursor: pointer;
     user-select: none;
 }
