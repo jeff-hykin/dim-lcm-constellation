@@ -1,8 +1,8 @@
 import { createRoot } from "react-dom/client"
 import { App } from "./App.tsx"
-import { followDesktopTheme } from "./theme.ts"
-import "./theme.css"
+import { initTheme } from "./dim-app/theme.js"
+import "./dim-app/theme.css"
 import "./app.css"
 
-followDesktopTheme()
+initTheme()
 createRoot(document.getElementById("root")!).render(<App />)

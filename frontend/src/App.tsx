@@ -6,6 +6,8 @@ import { call, events } from "./api.ts"
 import { accentVar, agoText, heatColor, heatFracLog, human, humanBits, humanSecs } from "./format.ts"
 import { FlowGraph, LAYOUTS, type Node } from "./graph.ts"
 import { Icon } from "./icons.tsx"
+import { onThemeChange } from "./dim-app/theme.js"
+import { ThemeToggle } from "./ThemeToggle.tsx"
 import type { Graph, Settings, State, TopicRow, Totals, WorkerStats, WorkersView } from "./types.ts"
 
 const DEFAULT_SETTINGS: Settings = {
@@ -31,6 +33,13 @@ export function App() {
     const [hovered, setHovered] = useState<Node | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [, setTick] = useState(0)
+    // inline heat colors depend on the palette: re-render on a theme switch
+    useEffect(() => {
+        const off = onThemeChange(() => setTick((t) => t + 1))
+        return () => {
+            off()
+        }
+    }, [])
 
     const act = useCallback((promise: Promise<unknown>) => {
         promise.then(() => setError(null), (e) => setError(e.message))
@@ -201,6 +210,7 @@ export function App() {
                 <span id="conn" className={paused ? "paused" : live ? "live" : ""}>
                     {paused ? "❚❚ paused" : live ? "● live" : "○ waiting for run"}
                 </span>
+                <ThemeToggle />
             </div>
 
             <div className="bar dim-tabs" id="layouts" role="tablist">
