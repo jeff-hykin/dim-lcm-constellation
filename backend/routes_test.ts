@@ -122,7 +122,10 @@ Deno.test({
         // Desktop's own zenoh keys (its namespace) aren't robot topics
         monitor.ingest({
             kind: "packets",
-            events: [["zenoh", `${monitor.desktopNamespace}/apps/x/frontend/stats`, 3, 300]],
+            events: [
+                ["zenoh", `${monitor.desktopNamespace}/apps/x/frontend/stats`, 3, 300],
+                ["zenoh", "dimos-desktop/other-7381/desktop/frontend/endpoint-stats", 1, 100],
+            ],
         })
         assertEquals([...monitor.channels.keys()].filter((key) => key.includes("/frontend/")), [])
 

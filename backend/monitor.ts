@@ -167,13 +167,14 @@ export class Monitor {
         return this.paused ? this.pausedAt : Date.now()
     }
 
-    /** Desktop's own zenoh keys (its events, jobs, app frontends: `<ns>/...`, docs/events.md) aren't the robot's
-     * topics: left out, so "nothing running" looks empty. */
+    /** Desktops' zenoh keys (events, jobs, app frontends: `<ns>/...`, docs/events.md; this one's namespace, and any
+     * other Desktop's on the LAN under the default `dimos-desktop/`) aren't the robot's topics: left out, so "nothing
+     * running" looks empty. */
     desktopNamespace: string = desktopNamespace()
 
     isDesktopKey(transport: string, channel: string): boolean {
         return transport === "zenoh" && (channel === this.desktopNamespace ||
-            channel.startsWith(`${this.desktopNamespace}/`))
+            channel.startsWith(`${this.desktopNamespace}/`) || channel.startsWith("dimos-desktop/"))
     }
 
     /** One NDJSON frame from the spy. */
