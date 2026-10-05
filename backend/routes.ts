@@ -1,12 +1,13 @@
 // Every action this app has, as an endpoint (http.ts). The UI calls these; so can Desktop's agent.
 import { HttpError, onPageMessage, openPages, publishEvent, type Route } from "./http.ts"
 import { LAYOUTS, Monitor, type Settings } from "./monitor.ts"
+import { dimosApp } from "./dimos_app.ts"
 
 export const DESCRIPTION =
     "LCM Constellation: live LCM and Zenoh traffic (every channel's rate and message size) over the running blueprint's module graph, plus dtop's per-worker CPU/RAM"
 
 export const monitor = new Monitor(
-    Deno.env.get("DIMOS_DESKTOP_URL") ?? "http://127.0.0.1:7077",
+    dimosApp.desktopUrl ?? "http://127.0.0.1:7077",
 )
 
 const bool = (value: unknown, name: string) => {

@@ -1,5 +1,6 @@
-// dimos-app-server: this app's API and its built frontend on the unix socket Desktop gives (--socket), else a port.
-// Desktop's flags: --socket --desktop-url --zenoh-web-url --zenoh-connect --dimos-dir --dimos-python (docs/apps.md).
+// dimos-app-server: this app's API and its built frontend on the unix socket Desktop gives, else a port. What Desktop
+// passes: the DIMOS_APP env var, one JSON object (docs/apps.md; dimos_app.ts, with older Desktops' flags as fallback).
+import { dimosApp } from "./dimos_app.ts"
 import { eventsSocket, handle, publishEvent } from "./http.ts"
 import { DESCRIPTION, monitor, routes } from "./routes.ts"
 import { runSpy } from "./spy.ts"
@@ -45,7 +46,7 @@ async function serve(request: Request): Promise<Response> {
 const GRAPH_RESCAN_MS = 4000
 const STATS_MS = 500
 
-monitor.desktopUrl = flag("desktop-url") ?? monitor.desktopUrl
+monitor.desktopUrl = dimosApp.desktopUrl ?? monitor.desktopUrl
 monitor.refreshGraph()
 setInterval(() => monitor.refreshGraph(), GRAPH_RESCAN_MS)
 // open pages get the topic table and totals twice a second (the same numbers api/topics gives; frozen while paused)
@@ -61,7 +62,7 @@ setInterval(() => {
 }, STATS_MS)
 runSpy(monitor)
 
-const socket = flag("socket")
+const socket = dimosApp.socket
 if (socket) {
     try {
         Deno.removeSync(socket)
