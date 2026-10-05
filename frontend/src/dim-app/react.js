@@ -48,11 +48,7 @@ export function EmptyState(props) {
     useEffect(() => {
         ref.current?.replaceChildren(emptyState(props))
     })
-    return createElement("div", {
-        ref,
-        className: props.layer ? "dim-empty-layer" : "dim-empty-host",
-        style: props.style,
-    })
+    return createElement("div", { ref, className: props.layer ? "dim-empty-layer" : "dim-empty-host", style: props.style })
 }
 
 /** Whether app `id` is installed in Desktop (null until known); re-checks when Desktop's app list changes. */
