@@ -196,7 +196,7 @@ export function App() {
     const counts = flow?.counts() ?? { modules: 0, topics: 0 }
     const live = Date.now() - lastStatsAt < 4000
     const cardModule = settings.pinnedModule ? `m:${settings.pinnedModule}` : hovered?.id ?? null
-    const empty = counts.modules + counts.topics === 0
+    const empty = counts.modules === 0
     const launcher = { kind: "blueprint" as const }
     const retry = () => location.reload()
     const onboarding = backendDown
@@ -217,7 +217,7 @@ export function App() {
             body: "Desktop's zenoh-web bridge is down or blocked. This page reconnects by itself when it's back.",
             actions: [{ label: "Open Settings", app: "settings" }, { label: "Try again", onClick: retry }],
         }
-        : !graph || !empty
+        : !graph || graph.blueprint && !empty
         ? null
         : graph.unknown
         ? {

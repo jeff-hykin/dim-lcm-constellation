@@ -119,6 +119,13 @@ Deno.test({
         assertEquals((await call("POST", "api/pause", "not json" as unknown as object)).status, 200)
         await call("POST", "api/resume")
 
+        // Desktop's own zenoh keys (its namespace) aren't robot topics
+        monitor.ingest({
+            kind: "packets",
+            events: [["zenoh", `${monitor.desktopNamespace}/apps/x/frontend/stats`, 3, 300]],
+        })
+        assertEquals([...monitor.channels.keys()].filter((key) => key.includes("/frontend/")), [])
+
         // workers: a pickled /resource_stats frame
         const pickled = "gASVNgAAAAAAAAB9lCiMC2Nvb3JkaW5hdG9ylH2UjANwaWSUSwFzjAd3b3JrZXJzlF2UfZSMA3Bzc5RLAnNhdS4="
         monitor.ingest({ kind: "raw", transport: "lcm", channel: "/resource_stats", b64: pickled })

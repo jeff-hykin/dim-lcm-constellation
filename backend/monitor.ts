@@ -167,6 +167,15 @@ export class Monitor {
         return this.paused ? this.pausedAt : Date.now()
     }
 
+    /** Desktop's own zenoh keys (its events, jobs, app frontends: `<ns>/...`, docs/events.md) aren't the robot's
+     * topics: left out, so "nothing running" looks empty. */
+    desktopNamespace: string = desktopNamespace()
+
+    isDesktopKey(transport: string, channel: string): boolean {
+        return transport === "zenoh" && (channel === this.desktopNamespace ||
+            channel.startsWith(`${this.desktopNamespace}/`))
+    }
+
     /** One NDJSON frame from the spy. */
     ingest(frame: Record<string, unknown>, at = Date.now()) {
         if (frame.kind === "sample") {
@@ -177,6 +186,12 @@ export class Monitor {
             return
         }
         if (frame.kind === "packets" && Array.isArray(frame.events)) {
+            frame = {
+                ...frame,
+                events: (frame.events as [string, string, number, number][]).filter(([transport, channel]) =>
+                    !this.isDesktopKey(transport, channel)
+                ),
+            }
             for (const [transport, channel, count, bytes] of frame.events as [string, string, number, number][]) {
                 this.note(transport, channel, count, bytes, at)
             }
@@ -533,6 +548,19 @@ export class Monitor {
         publishEvent({ type: "graph", graph: next })
         return true
     }
+}
+
+/** Desktop's zenoh namespace, from DIMOS_APP.zenohNamespace (default `dimos-desktop`, the default's first chunk). */
+function desktopNamespace(): string {
+    try {
+        const ns = JSON.parse(Deno.env.get("DIMOS_APP") ?? "{}").zenohNamespace
+        if (typeof ns === "string" && ns) {
+            return ns
+        }
+    } catch {
+        // no DIMOS_APP: the default
+    }
+    return "dimos-desktop"
 }
 
 function round(value: number) {
