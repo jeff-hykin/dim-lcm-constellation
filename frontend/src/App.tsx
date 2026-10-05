@@ -7,6 +7,8 @@ import { accentVar, agoText, heatColor, heatFracLog, human, humanBits, humanSecs
 import { FlowGraph, LAYOUTS, type Node } from "./graph.ts"
 import { Icon } from "./icons.tsx"
 import { onThemeChange } from "./dim-app/theme.js"
+import { EmptyState } from "./dim-app/react.js"
+import { getZenoh } from "./dim-app/zenoh.js"
 import { ThemeToggle } from "./ThemeToggle.tsx"
 import type { Graph, Settings, State, TopicRow, Totals, WorkerStats, WorkersView } from "./types.ts"
 
@@ -32,6 +34,9 @@ export function App() {
     const [lastStatsAt, setLastStatsAt] = useState(0)
     const [hovered, setHovered] = useState<Node | null>(null)
     const [error, setError] = useState<string | null>(null)
+    // the first-run message: the server unreachable, the zenoh-web link lost
+    const [backendDown, setBackendDown] = useState(false)
+    const [linkLost, setLinkLost] = useState(false)
     const [, setTick] = useState(0)
     // inline heat colors depend on the palette: re-render on a theme switch
     useEffect(() => {
@@ -70,9 +75,10 @@ export function App() {
     useEffect(() => {
         const load = () => {
             call<Graph>("GET", "api/graph").then((g) => {
+                setBackendDown(false)
                 setGraph(g)
                 graphRef.current?.applyGraph(g)
-            }, (e) => setError(e.message))
+            }, () => setBackendDown(true))
             call<State>("GET", "api/state").then((s) => {
                 setSettings(s.settings)
                 setPaused(s.paused)
@@ -125,8 +131,20 @@ export function App() {
                     }
                     break
             }
-        }, (connected) => connected && load())
-        return socket.stop
+        }, (connected) => {
+            setLinkLost(!connected)
+            if (connected) {
+                load()
+            }
+        })
+        // a blueprint started or stopped: re-read it now instead of on the backend's next 4 s rescan
+        const offRuns = getZenoh().subscribeDesktop("runs", () => {
+            call("POST", "api/graph/refresh").catch(() => {})
+        })
+        return () => {
+            offRuns()
+            socket.stop()
+        }
     }, [])
 
     // settings → the graph engine
@@ -178,16 +196,50 @@ export function App() {
     const counts = flow?.counts() ?? { modules: 0, topics: 0 }
     const live = Date.now() - lastStatsAt < 4000
     const cardModule = settings.pinnedModule ? `m:${settings.pinnedModule}` : hovered?.id ?? null
-    const hint = !graph || counts.modules + counts.topics > 0
+    const empty = counts.modules + counts.topics === 0
+    const launcher = { kind: "blueprint" as const }
+    const retry = () => location.reload()
+    const onboarding = backendDown
+        ? {
+            testId: "onboard-backend-down",
+            label: "Server not answering",
+            tone: "warn" as const,
+            title: "The LCM Constellation server isn't answering",
+            body: "Restarting the app usually fixes it: close it with ✕ and open it again.",
+            actions: [{ label: "Try again", onClick: retry }],
+        }
+        : linkLost && empty
+        ? {
+            testId: "onboard-link-lost",
+            label: "No data link",
+            tone: "warn" as const,
+            title: "Can't reach the robot data bridge",
+            body: "Desktop's zenoh-web bridge is down or blocked. This page reconnects by itself when it's back.",
+            actions: [{ label: "Open Settings", app: "settings" }, { label: "Try again", onClick: retry }],
+        }
+        : !graph || !empty
         ? null
         : graph.unknown
-        ? `${graph.blueprint} is running — add its dimos dir to the desktop to see modules`
-        : "waiting for a running stack — start a blueprint to see modules light up"
+        ? {
+            testId: "onboard-no-metadata",
+            label: `${graph.blueprint} is running`,
+            title: `Desktop can't see ${graph.blueprint}'s modules`,
+            body:
+                "Its blueprint isn't in the dimOS checkout Desktop uses, so there's no module list to draw. Point Desktop at that checkout in Settings.",
+            actions: [{ label: "Open Settings", app: "settings" }],
+        }
+        : {
+            testId: "onboard-no-blueprint",
+            label: "No blueprint running",
+            title: "Nothing is running yet",
+            body: "Start a blueprint (or a replay, no robot needed) and its modules and topics light up here.",
+            actions: [{ label: "Open the Launcher", app: "launcher", params: launcher }],
+        }
 
     return (
         <>
             <div ref={host} />
-            {hint && <div id="hint">{hint}</div>}
+            {onboarding && <EmptyState layer {...onboarding} />}
 
             <div className="bar dim-panel glass" id="toolbar">
                 <span className="logo dim-title">
@@ -393,7 +445,9 @@ function TopicsPanel(
                     })
                     : (
                         <div className="empty">
-                            {settings.filter ? "no topics match the filter" : "no topics — start a blueprint"}
+                            {settings.filter
+                                ? "no topics match the filter"
+                                : "no topics yet: they appear a few seconds after a blueprint starts"}
                         </div>
                     )}
             </div>

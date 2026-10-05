@@ -336,7 +336,7 @@ html, body {
 }
 
 #controls {
-    bottom: 16px;
+    bottom: calc(16px + var(--dim-inset-bottom));
     left: 16px;
     display: flex;
     flex-direction: column;
@@ -355,7 +355,7 @@ html, body {
 
 #legend {
     position: fixed;
-    bottom: 18px;
+    bottom: calc(18px + var(--dim-inset-bottom));
     left: 62px;
     z-index: 6;
     display: flex;
@@ -389,7 +389,7 @@ html, body {
 
 #help {
     position: fixed;
-    bottom: 18px;
+    bottom: calc(18px + var(--dim-inset-bottom));
     right: 16px;
     z-index: 6;
     color: var(--muted-fg);
@@ -409,7 +409,7 @@ html, body {
     width: 272px;
     z-index: 6;
     padding: 0;
-    bottom: 120px;
+    bottom: calc(120px + var(--dim-inset-bottom));
     max-height: calc(100vh - 226px);
     display: flex;
     flex-direction: column;
@@ -856,20 +856,9 @@ html, body {
     font-size: 10px;
 }
 
-#hint {
+/* the first-run message floats over the graph, above Desktop's dock */
+.dim-empty-layer {
     position: fixed;
-    inset: 0;
-    z-index: 4;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none;
-    color: var(--muted-fg);
-    font-size: 13px;
-    letter-spacing: 0.5px;
-}
-#hint.hide {
-    display: none;
 }
 
 /* narrow / phone widths: keep the top bars to single scrollable rows (so their
@@ -910,7 +899,7 @@ html, body {
     }
     #topics {
         top: auto;
-        bottom: 12px;
+        bottom: calc(12px + var(--dim-inset-bottom));
         left: 12px;
         right: 12px;
         width: auto;
@@ -980,7 +969,7 @@ html, body {
 #error {
     position: fixed;
     z-index: 20;
-    bottom: 16px;
+    bottom: calc(16px + var(--dim-inset-bottom));
     left: 50%;
     transform: translateX(-50%);
     max-width: 70vw;
