@@ -12,7 +12,7 @@
 // HTTP. Never throws for a failed publish (logs once per kind of failure and resolves to null).
 
 import { readDimosApp } from "./app_env.js"
-import { checkTopic } from "./zenoh.js"
+import { checkTopic } from "./topic.js"
 
 const MAX_QUEUE = 10_000
 const warned = new Set()
