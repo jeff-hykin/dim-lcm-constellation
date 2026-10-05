@@ -2,6 +2,9 @@
 // way. `routes` is also served as agent.json (Desktop's agent finds the endpoints there; dimos.yaml repeats them, and
 // `deno task check-endpoints` keeps the two in step). Docs: dimos-desktop docs/apps.md, docs/agent.md.
 
+// @ts-types="./dim-app/frontend_publish.d.ts"
+import { publishFrontend, stateChanged } from "./dim-app/frontend_publish.js"
+
 export type Params = Record<string, { type: string; description?: string; required?: boolean; items?: unknown }>
 
 export type Route = {
@@ -99,43 +102,58 @@ export async function handle(request: Request, routes: Route[], description: str
     return null
 }
 
-/** Pages listening on `api/events/ws` (the standard backend → page channel): one JSON event per message. */
-const pages = new Set<WebSocket>()
-
+/** Backend → page (Desktop's docs/events.md): Desktop's relay publishes it on `<ns>/apps/<name>/frontend/events`
+ * (ordered: one key). */
 export function publishEvent(event: unknown) {
-    const text = JSON.stringify(event)
-    for (const ws of pages) {
-        if (ws.readyState === WebSocket.OPEN) {
-            ws.send(text)
-        }
-    }
+    return publishFrontend("events", event)
 }
 
-/** Messages pages send back on the same socket (here: a rendered view a `view-request` asked for). */
+export { publishFrontend, stateChanged }
+
+// Page → backend plumbing (not actions, so not routes; the page calls them, the agent never needs to):
+//   POST api/pages/<pageId>   an open page says it's there, every PAGE_BEAT_MS (and when it opens); …/bye: it left
+//   POST api/views/<id>       a page's answer to a `view-request` event: {png}
+export const PAGE_BEAT_MS = 10_000
+const PAGE_GONE_MS = 3 * PAGE_BEAT_MS
+const pagesSeen = new Map<string, number>()
 const pageListeners = new Set<(message: Record<string, unknown>) => void>()
 
+/** Messages pages send back (here: a rendered view a `view-request` asked for, as `{type: "view", id, png}`). */
 export function onPageMessage(listener: (message: Record<string, unknown>) => void): () => void {
     pageListeners.add(listener)
     return () => pageListeners.delete(listener)
 }
 
-export function openPages(): number {
-    return [...pages].filter((ws) => ws.readyState === WebSocket.OPEN).length
-}
-
-export function eventsSocket(request: Request): Response {
-    const { socket, response } = Deno.upgradeWebSocket(request)
-    socket.onopen = () => pages.add(socket)
-    socket.onclose = () => pages.delete(socket)
-    socket.onmessage = (message) => {
-        try {
-            const parsed = JSON.parse(String(message.data))
-            for (const listener of pageListeners) {
-                listener(parsed)
-            }
-        } catch {
-            // not JSON
+/** Pages that said they're open in the last 30 s. */
+export function openPages(now = Date.now()): number {
+    for (const [id, at] of pagesSeen) {
+        if (now - at > PAGE_GONE_MS) {
+            pagesSeen.delete(id)
         }
     }
-    return response
+    return pagesSeen.size
+}
+
+/** Handles the page plumbing above; null for anything else. */
+export async function pagePlumbing(request: Request): Promise<Response | null> {
+    const path = new URL(request.url).pathname
+    const page = path.match(/^\/api\/pages\/([\w-]+)$/)
+    if (page && request.method === "POST") {
+        pagesSeen.set(page[1], Date.now())
+        return Response.json({ ok: true, beatMs: PAGE_BEAT_MS })
+    }
+    const bye = path.match(/^\/api\/pages\/([\w-]+)\/bye$/)
+    if (bye && request.method === "POST") {
+        pagesSeen.delete(bye[1]) // sendBeacon as the page goes away
+        return Response.json({ ok: true })
+    }
+    const view = path.match(/^\/api\/views\/([\w-]+)$/)
+    if (view && request.method === "POST") {
+        const body = await request.json().catch(() => null)
+        for (const listener of pageListeners) {
+            listener({ ...(body ?? {}), type: "view", id: view[1] })
+        }
+        return Response.json({ ok: true })
+    }
+    return null
 }

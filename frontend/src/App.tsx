@@ -66,18 +66,21 @@ export function App() {
     const graphStateRef = useRef(graph)
     graphStateRef.current = graph
 
-    // initial state, then the backend's events
+    // initial state, then the backend's events (and the state again after the zenoh-web link comes back)
     useEffect(() => {
-        call<Graph>("GET", "api/graph").then((g) => {
-            setGraph(g)
-            graphRef.current?.applyGraph(g)
-        }, (e) => setError(e.message))
-        call<State>("GET", "api/state").then((s) => {
-            setSettings(s.settings)
-            setPaused(s.paused)
-            setTotals(s.totals)
-            graphRef.current!.paused = s.paused
-        }, (e) => setError(e.message))
+        const load = () => {
+            call<Graph>("GET", "api/graph").then((g) => {
+                setGraph(g)
+                graphRef.current?.applyGraph(g)
+            }, (e) => setError(e.message))
+            call<State>("GET", "api/state").then((s) => {
+                setSettings(s.settings)
+                setPaused(s.paused)
+                setTotals(s.totals)
+                graphRef.current!.paused = s.paused
+            }, (e) => setError(e.message))
+        }
+        load()
         const socket = events((event) => {
             const flow = graphRef.current!
             switch (event.type) {
@@ -122,7 +125,7 @@ export function App() {
                     }
                     break
             }
-        })
+        }, (connected) => connected && load())
         return socket.stop
     }, [])
 

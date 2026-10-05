@@ -1,6 +1,6 @@
 // What the app knows: the running blueprint's module graph (from Desktop), every LCM/Zenoh channel the spy has seen
 // with its rate and sizes, the dtop worker table, and the shared view settings. routes.ts exposes it; main.ts feeds it.
-import { HttpError, publishEvent } from "./http.ts"
+import { HttpError, openPages, publishEvent, publishFrontend } from "./http.ts"
 import { unpickle } from "./pickle.ts"
 
 export const WINDOW_MS = 5000
@@ -180,7 +180,10 @@ export class Monitor {
             for (const [transport, channel, count, bytes] of frame.events as [string, string, number, number][]) {
                 this.note(transport, channel, count, bytes, at)
             }
-            publishEvent({ type: "packets", events: frame.events })
+            if (openPages()) {
+                // the edges' pulses: frontend topic `packets`, latest-wins, so unordered
+                publishFrontend("packets", { type: "packets", events: frame.events }, { ordered: false })
+            }
         } else if (frame.kind === "raw" && String(frame.channel).includes("resource_stats")) {
             try {
                 const data = unpickle(Uint8Array.from(atob(String(frame.b64)), (c) => c.charCodeAt(0)))

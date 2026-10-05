@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertMatch } from "@std/assert"
-import { eventsSocket, handle } from "./http.ts"
+import { handle, pagePlumbing } from "./http.ts"
 import { unpickle } from "./pickle.ts"
 import { DESCRIPTION, monitor, routes } from "./routes.ts"
 
@@ -161,20 +161,28 @@ Deno.test({
     sanitizeResources: false,
     fn: async () => {
         assertEquals((await call("GET", "api/view")).status, 409)
-        const server = Deno.serve({ port: 0, onListen: () => {} }, (request) => eventsSocket(request))
-        const page = new WebSocket(`ws://127.0.0.1:${server.addr.port}/api/events/ws`)
-        page.onmessage = (message) => {
-            const event = JSON.parse(message.data)
-            if (event.type === "view-request") {
-                page.send(JSON.stringify({ type: "view", id: event.id, png: "iVBORw0KGgo=" }))
+        // a stand-in for Desktop's relay: the view-request arrives on the frontend topic `events`, the page answers by POST
+        const relay = Deno.serve({ port: 0, onListen: () => {} }, async (request) => {
+            const event = await request.json()
+            if (new URL(request.url).pathname === "/desktop/frontend/lcm/events" && event.type === "view-request") {
+                await pagePlumbing(
+                    new Request(`http://app/api/views/${event.id}`, {
+                        method: "POST",
+                        body: JSON.stringify({ png: "iVBORw0KGgo=" }),
+                    }),
+                )
             }
-        }
-        await new Promise((resolve) => (page.onopen = resolve))
-        await new Promise((resolve) => setTimeout(resolve, 50))
+            return Response.json({ ok: true })
+        })
+        Deno.env.set("DIMOS_APP", JSON.stringify({ name: "lcm", desktopUrl: `http://127.0.0.1:${relay.addr.port}` }))
+        const page = (path: string) => pagePlumbing(new Request(`http://app/${path}`, { method: "POST" }))
+        assertEquals((await (await page("api/pages/p1"))!.json()).ok, true)
         const view = (await call("GET", "api/view")).json
         assertEquals(view.image, { mimeType: "image/png", data: "iVBORw0KGgo=" })
-        page.close()
-        await server.shutdown()
+        await page("api/pages/p1/bye")
+        assertEquals((await call("GET", "api/view")).status, 409)
+        Deno.env.delete("DIMOS_APP")
+        await relay.shutdown()
     },
 })
 
