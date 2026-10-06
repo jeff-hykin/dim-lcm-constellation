@@ -35,6 +35,7 @@ export function App() {
     const [graph, setGraph] = useState<Graph | null>(null)
     // embedded: the asked-for blueprint from its wiring, drawn while it isn't the one running
     const [staticGraph, setStaticGraph] = useState<Graph | null>(null)
+    const [staticFailed, setStaticFailed] = useState(false)
     const [workersOpen, setWorkersOpen] = useState(false)
     const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
     const [paused, setPaused] = useState(false)
@@ -166,7 +167,10 @@ export function App() {
         }
         call<Graph>("GET", `api/graph/blueprint?name=${encodeURIComponent(EMBED_BLUEPRINT)}`).then(
             setStaticGraph,
-            (e) => setError(e.message),
+            (e) => {
+                setStaticFailed(true)
+                setError(e.message)
+            },
         )
     }, [])
     const shown = EMBED_BLUEPRINT && graph?.blueprint !== EMBED_BLUEPRINT ? staticGraph : graph
@@ -256,6 +260,9 @@ export function App() {
         }
         : drawn
         ? null
+        // embedded for a blueprint: its graph is still on the way, so it isn't "nothing running" yet
+        : EMBED_BLUEPRINT && !staticFailed
+        ? { testId: "onboard-loading", title: "Loading", busy: true }
         : linkLost && empty
         ? {
             testId: "onboard-link-lost",
