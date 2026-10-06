@@ -1,4 +1,4 @@
-// What the app knows: the running blueprint's module graph (from Desktop), every LCM/Zenoh channel the spy has seen
+// What the app knows: the running blueprint's module graph (from Desktop), every multicast/Zenoh channel the spy has seen
 // with its rate and sizes, the dtop worker table, and the shared view settings. routes.ts exposes it; main.ts feeds it.
 import { HttpError, openPages, publishEvent, publishFrontend } from "./http.ts"
 import { unpickle } from "./pickle.ts"
@@ -96,22 +96,26 @@ export function buildGraph(name: string, info: { modules?: unknown[] }): Graph {
             name: string
             class?: string
             doc?: string
-            streams?: { name: string; type?: string; direction?: string }[]
+            summary?: string
+            rpcs?: unknown[]
+            skills?: unknown[]
+            streams?: { name: string; type?: string; direction?: string; topic?: string | null }[]
         }
         const streams = module.streams ?? []
+        // a newer dimos gives each stream the topic it's wired to (remapping applied): `wire` when it differs
         const pick = (direction: string) =>
-            streams.filter((s) => s.direction === direction || s.direction === "inout").map(({ name, type }) => ({
-                name,
-                type,
-            }))
+            streams.filter((s) => s.direction === direction || s.direction === "inout").map(({ name, type, topic }) => {
+                const wire = topic ? topic.replace(/^\/+/, "") : ""
+                return wire && wire !== name ? { name, type, wire } : { name, type }
+            })
         modules[module.name] = {
             id: module.name,
             label: String(module.class ?? module.name).split(".").pop()!,
-            doc: module.doc ?? "",
+            doc: module.summary ?? module.doc ?? "",
             inputs: pick("in"),
             outputs: pick("out"),
-            rpcs: [],
-            skills: [],
+            rpcs: module.rpcs ?? [],
+            skills: module.skills ?? [],
         }
         for (
             const [direction, list] of [["out", modules[module.name].outputs], [
@@ -120,12 +124,13 @@ export function buildGraph(name: string, info: { modules?: unknown[] }): Graph {
             ]] as const
         ) {
             for (const stream of list) {
-                const key = `${module.name}|${stream.name}|${direction}`
+                const topic = stream.wire ?? stream.name
+                const key = `${module.name}|${topic}|${direction}`
                 if (!seen.has(key)) {
                     seen.add(key)
                     edges.push({
                         module: module.name,
-                        topic: stream.name,
+                        topic,
                         type: stream.type ?? "",
                         direction,
                         declared: null,
@@ -314,7 +319,8 @@ export class Monitor {
     /** The topics table: filtered by text/transport, live ones first in the sort order, idle ones by recency. */
     listTopics(options: { filter?: string; transport?: string; active?: boolean; sort?: string; limit?: number } = {}) {
         const filter = (options.filter ?? "").toLowerCase()
-        const transport = options.transport ?? "all"
+        // "multicast" is the UI's name for the spy's "lcm" transport
+        const transport = options.transport === "multicast" ? "lcm" : options.transport ?? "all"
         const sort = options.sort ?? "bps"
         let rows = this.allTopics().filter((row) =>
             (!filter || row.topic.toLowerCase().includes(filter) || row.msgType.toLowerCase().includes(filter)) &&
@@ -487,10 +493,10 @@ export class Monitor {
                     next.sort = value as Settings["sort"]
                     break
                 case "transport":
-                    if (!["all", "lcm", "zenoh"].includes(String(value))) {
-                        throw new HttpError(400, "transport must be all, lcm or zenoh")
+                    if (!["all", "lcm", "multicast", "zenoh"].includes(String(value))) {
+                        throw new HttpError(400, "transport must be all, multicast or zenoh")
                     }
-                    next.transport = value as Settings["transport"]
+                    next.transport = (value === "multicast" ? "lcm" : value) as Settings["transport"]
                     break
                 case "filter":
                     next.filter = String(value)
@@ -515,20 +521,32 @@ export class Monitor {
         return next
     }
 
-    /** Re-read the running blueprint from Desktop; true when the graph changed. */
-    async refreshGraph(): Promise<boolean> {
-        const fetchJson = async (path: string) => {
-            try {
-                const response = await fetch(`${this.desktopUrl}${path}`)
-                if (!response.ok) {
-                    await response.body?.cancel()
-                    return null
-                }
-                return await response.json()
-            } catch {
+    /** A Desktop API answer as JSON, null when it fails. */
+    async fetchDesktop(path: string) {
+        try {
+            const response = await fetch(`${this.desktopUrl}${path}`)
+            if (!response.ok) {
+                await response.body?.cancel()
                 return null
             }
+            return await response.json()
+        } catch {
+            return null
         }
+    }
+
+    /** Any blueprint's module graph from its static wiring (running or not; no traffic). */
+    async blueprintGraph(name: string): Promise<Graph> {
+        const info = await this.fetchDesktop(`/dimos/blueprints/${encodeURIComponent(name)}`)
+        if (!info || !Array.isArray(info.modules)) {
+            throw new HttpError(502, `Desktop couldn't describe the blueprint ${name}`)
+        }
+        return buildGraph(name, info)
+    }
+
+    /** Re-read the running blueprint from Desktop; true when the graph changed. */
+    async refreshGraph(): Promise<boolean> {
+        const fetchJson = (path: string) => this.fetchDesktop(path)
         const runs: { blueprint: string; started_at?: string }[] = (await fetchJson("/dimos/runs"))?.runs ?? []
         let next: Graph = { blueprint: "", modules: {}, edges: [] }
         if (runs.length) {

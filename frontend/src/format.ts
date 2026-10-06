@@ -29,7 +29,10 @@ const PALETTE = ["--info", "--warn", "--cat-1", "--violet", "--ok", "--cat-2", "
 
 const hashVar = (key: string) => PALETTE[[...key].reduce((a, c) => a + c.charCodeAt(0), 0) % PALETTE.length]
 
-/** A channel's display base and message type: LCM after `#`, Zenoh as the last key segment. */
+/** How a transport reads in the UI (the spy calls multicast by its protocol's name, an internal detail). */
+export const transportLabel = (transport: string | null) => transport === "lcm" ? "multicast" : transport ?? ""
+
+/** A channel's display base and message type: multicast after `#`, Zenoh as the last key segment. */
 export function channelType(channel: string): { base: string; msgType: string } {
     if (channel.includes("#")) {
         const [base, msgType] = channel.split("#")

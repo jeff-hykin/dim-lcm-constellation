@@ -4,7 +4,7 @@ import { LAYOUTS, Monitor, type Settings } from "./monitor.ts"
 import { dimosApp } from "./dimos_app.ts"
 
 export const DESCRIPTION =
-    "LCM Constellation: live LCM and Zenoh traffic (every channel's rate and message size) over the running blueprint's module graph, plus dtop's per-worker CPU/RAM"
+    "Constellation: live robot traffic (every topic's rate and message size, multicast and Zenoh) over the running blueprint's module graph, plus dtop's per-worker CPU/RAM"
 
 export const monitor = new Monitor(
     dimosApp.desktopUrl ?? "http://127.0.0.1:7077",
@@ -35,7 +35,7 @@ const topicParams = {
         type: "string",
         description: "only topics whose channel or message type contains this (case-insensitive)",
     },
-    transport: { type: "string", description: "all (default), lcm or zenoh" },
+    transport: { type: "string", description: "all (default), multicast or zenoh" },
     active: { type: "boolean", description: "only topics with traffic in the last 5 s" },
     sort: { type: "string", description: "bps (default: bandwidth), hz, messages or name" },
     limit: { type: "number", description: "at most this many rows" },
@@ -44,7 +44,7 @@ const topicParams = {
 /** Ask the open pages to render the graph; the first answer wins. */
 function requestView(timeoutMs = 5000): Promise<Record<string, unknown>> {
     if (!openPages()) {
-        throw new HttpError(409, "no page is open to draw the graph: open LCM Constellation in Desktop first")
+        throw new HttpError(409, "no page is open to draw the graph: open Constellation in Desktop first")
     }
     const id = crypto.randomUUID()
     return new Promise((resolve, reject) => {
@@ -98,11 +98,11 @@ export const routes: Route[] = [
         method: "GET",
         path: "api/topics",
         description:
-            "Every LCM/Zenoh channel seen (and blueprint topics with no traffic yet, declaredOnly): rate (hz), bandwidth (bytesPerSec), average message size, total messages, last seen, publishing/subscribing modules",
+            "Every multicast and Zenoh channel seen (and blueprint topics with no traffic yet, declaredOnly): rate (hz), bandwidth (bytesPerSec), average message size, total messages, last seen, publishing/subscribing modules",
         params: topicParams,
         handler: ({ filter, transport, active, sort, limit }) => {
-            if (transport !== undefined && !["all", "lcm", "zenoh"].includes(String(transport))) {
-                throw new HttpError(400, "transport must be all, lcm or zenoh")
+            if (transport !== undefined && !["all", "lcm", "multicast", "zenoh"].includes(String(transport))) {
+                throw new HttpError(400, "transport must be all, multicast or zenoh")
             }
             if (sort !== undefined && !["bps", "hz", "messages", "name"].includes(String(sort))) {
                 throw new HttpError(400, "sort must be bps, hz, messages or name")
@@ -135,7 +135,7 @@ export const routes: Route[] = [
         method: "POST",
         path: "api/topic/sample",
         description:
-            "Wait for the next message on a topic and return its size and the first bytes (hex + printable text; an LCM message starts with its type fingerprint)",
+            "Wait for the next message on a topic and return its size and the first bytes (hex + printable text; a multicast message starts with its 8-byte type fingerprint)",
         params: {
             topic: { type: "string", required: true, description: "a channel or bare name seen in api/topics" },
             timeoutMs: { type: "number", description: "how long to wait (default 3000, max 15000)" },
@@ -147,6 +147,14 @@ export const routes: Route[] = [
         path: "api/graph",
         description: "The running blueprint's module graph: modules (with in/out streams) and module→topic edges",
         handler: () => monitor.graph,
+    },
+    {
+        method: "GET",
+        path: "api/graph/blueprint",
+        description:
+            "Any blueprint's module graph from its static wiring, running or not (no traffic): modules with their streams and module→topic edges",
+        params: { name: { type: "string", required: true, description: "the blueprint, e.g. unitree-go2-basic" } },
+        handler: ({ name }) => monitor.blueprintGraph(String(name)),
     },
     {
         method: "POST",
@@ -197,7 +205,7 @@ export const routes: Route[] = [
             layout: { type: "string", description: `graph layout: ${LAYOUTS.join(", ")}` },
             sort: { type: "string", description: "topic table order: bps, hz, messages or name" },
             filter: { type: "string", description: "topic table filter text (empty for none)" },
-            transport: { type: "string", description: "topic table transport: all, lcm or zenoh" },
+            transport: { type: "string", description: "topic table transport: all, multicast or zenoh" },
             showTopics: { type: "boolean", description: "show the topics table" },
             showWorkers: { type: "boolean", description: "show the workers (dtop) panel" },
             pinnedModule: { type: "string", description: 'pin this module\'s card open (null or "" to unpin)' },

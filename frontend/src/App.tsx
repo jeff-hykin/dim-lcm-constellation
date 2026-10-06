@@ -3,13 +3,20 @@
 // api/settings, api/pause, api/resume, so the agent and the page drive the same view.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { call, events } from "./api.ts"
-import { accentVar, agoText, heatColor, heatFracLog, human, humanBits, humanSecs } from "./format.ts"
+import { accentVar, agoText, heatColor, heatFracLog, human, humanBits, humanSecs, transportLabel } from "./format.ts"
 import { FlowGraph, LAYOUTS, type Node } from "./graph.ts"
 import { Icon } from "./icons.tsx"
 import { onThemeChange } from "./dim-app/theme.js"
 import { EmptyState } from "./dim-app/react.js"
 import { getZenoh } from "./dim-app/zenoh.js"
 import type { Graph, Settings, State, TopicRow, Totals, WorkerStats, WorkersView } from "./types.ts"
+
+// Desktop's blueprint Details embeds this page as its module graph (?embed&blueprint=<name>): just the graph, titled
+// Module Graph, the layouts and a workers toggle at the bottom right, and that blueprint drawn from its wiring when it
+// isn't the one running. Module clicks go to Desktop (postMessage), which can light modules and topics here.
+const PARAMS = new URLSearchParams(location.search)
+const EMBED = PARAMS.has("embed")
+const EMBED_BLUEPRINT = PARAMS.get("blueprint") ?? ""
 
 const DEFAULT_SETTINGS: Settings = {
     layout: "hierarchy",
@@ -25,6 +32,9 @@ export function App() {
     const host = useRef<HTMLDivElement>(null)
     const graphRef = useRef<FlowGraph | null>(null)
     const [graph, setGraph] = useState<Graph | null>(null)
+    // embedded: the asked-for blueprint from its wiring, drawn while it isn't the one running
+    const [staticGraph, setStaticGraph] = useState<Graph | null>(null)
+    const [workersOpen, setWorkersOpen] = useState(false)
     const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
     const [paused, setPaused] = useState(false)
     const [totals, setTotals] = useState<Totals | null>(null)
@@ -55,7 +65,12 @@ export function App() {
         const flow = new FlowGraph(host.current!, {
             onHover: (node) => setHovered(node?.kind === "module" ? node : null),
             onClick: (node) => {
-                if (node.kind === "module") {
+                if (node.kind === "module" && EMBED && parent !== window) {
+                    parent.postMessage(
+                        { type: "constellation:module", module: node.id.replace(/^m:/, "") },
+                        location.origin,
+                    )
+                } else if (node.kind === "module") {
                     const id = node.id.replace(/^m:/, "")
                     call("POST", "api/settings", { pinnedModule: settingsRef.current.pinnedModule === id ? null : id })
                         .catch((e) => setError(e.message))
@@ -76,7 +91,6 @@ export function App() {
             call<Graph>("GET", "api/graph").then((g) => {
                 setBackendDown(false)
                 setGraph(g)
-                graphRef.current?.applyGraph(g)
             }, () => setBackendDown(true))
             call<State>("GET", "api/state").then((s) => {
                 setSettings(s.settings)
@@ -91,7 +105,6 @@ export function App() {
             switch (event.type) {
                 case "graph":
                     setGraph(event.graph)
-                    flow.applyGraph(event.graph)
                     break
                 case "packets":
                     flow.pulse(event.events)
@@ -146,6 +159,34 @@ export function App() {
         }
     }, [])
 
+    useEffect(() => {
+        if (!EMBED_BLUEPRINT) {
+            return
+        }
+        call<Graph>("GET", `api/graph/blueprint?name=${encodeURIComponent(EMBED_BLUEPRINT)}`).then(
+            setStaticGraph,
+            (e) => setError(e.message),
+        )
+    }, [])
+    const shown = EMBED_BLUEPRINT && graph?.blueprint !== EMBED_BLUEPRINT ? staticGraph : graph
+    useEffect(() => {
+        if (shown) {
+            graphRef.current?.applyGraph(shown)
+        }
+    }, [shown])
+
+    // Desktop lights a module or a topic: {type: "constellation:focus", module?, topic?} (neither clears it)
+    useEffect(() => {
+        const onMessage = (event: MessageEvent) => {
+            if (event.origin === location.origin && event.data?.type === "constellation:focus") {
+                const { module, topic } = event.data
+                graphRef.current?.spotlight(module || topic ? { module, topic } : null)
+            }
+        }
+        addEventListener("message", onMessage)
+        return () => removeEventListener("message", onMessage)
+    }, [])
+
     // settings → the graph engine
     useEffect(() => {
         const flow = graphRef.current!
@@ -176,7 +217,7 @@ export function App() {
                 ev.preventDefault()
                 act(call("POST", graphRef.current!.paused ? "api/resume" : "api/pause"))
             } else if (ev.key === "d") {
-                change({ showWorkers: !s.showWorkers })
+                EMBED ? setWorkersOpen((open) => !open) : change({ showWorkers: !s.showWorkers })
             } else if (ev.key === "t") {
                 change({ showTopics: !s.showTopics })
             } else if (ev.key === "f" || ev.key === "0") {
@@ -198,15 +239,18 @@ export function App() {
     const empty = counts.modules === 0
     const launcher = { kind: "blueprint" as const }
     const retry = () => location.reload()
+    const drawn = EMBED_BLUEPRINT && staticGraph
     const onboarding = backendDown
         ? {
             testId: "onboard-backend-down",
             label: "Server not answering",
             tone: "warn" as const,
-            title: "The LCM Constellation server isn't answering",
+            title: "The Constellation server isn't answering",
             body: "Restarting the app usually fixes it: close it with ✕ and open it again.",
             actions: [{ label: "Try again", onClick: retry }],
         }
+        : drawn
+        ? null
         : linkLost && empty
         ? {
             testId: "onboard-link-lost",
@@ -240,33 +284,15 @@ export function App() {
             <div ref={host} />
             {onboarding && <EmptyState layer {...onboarding} />}
 
-            <div className="bar dim-panel glass" id="toolbar">
-                <span className="logo dim-title">
-                    Module flow <span>/ LCM · ZENOH</span>
-                </span>
-                <span className="sep" />
-                <span className="readout">
-                    <b>{counts.modules}</b> modules · <b>{counts.topics}</b> topics
-                </span>
-                <span className="readout">
-                    <b>{(totals?.hz ?? 0).toFixed(1)}</b> Hz · <b>{human(totals?.bytesPerSec ?? 0)}</b>/s
-                </span>
-                <span className="sep" />
-                <button
-                    type="button"
-                    className="dim-btn ghost icon"
-                    id="pause"
-                    title={paused ? "resume (space)" : "pause (space)"}
-                    onClick={() => act(call("POST", paused ? "api/resume" : "api/pause"))}
-                >
-                    <Icon name={paused ? "play" : "pause"} size={14} />
-                </button>
-                <span id="conn" className={paused ? "paused" : live ? "live" : ""}>
-                    {paused ? "❚❚ paused" : live ? "● live" : "○ waiting for run"}
-                </span>
-            </div>
+            {EMBED
+                ? (
+                    <div className="bar dim-panel glass" id="toolbar">
+                        <span className="logo dim-title">Module Graph</span>
+                    </div>
+                )
+                : <Toolbar counts={counts} totals={totals} paused={paused} live={live} act={act} />}
 
-            <div className="bar dim-tabs" id="layouts" role="tablist">
+            <div className={`bar dim-tabs${EMBED ? " corner" : ""}`} id="layouts" role="tablist">
                 {LAYOUTS.map((l) => (
                     <button
                         type="button"
@@ -280,8 +306,19 @@ export function App() {
                         {l.label}
                     </button>
                 ))}
+                {EMBED && (
+                    <button
+                        type="button"
+                        className={`dim-tab workers-toggle${workersOpen ? " on" : ""}`}
+                        aria-pressed={workersOpen}
+                        title="each worker's CPU and memory (D)"
+                        onClick={() => setWorkersOpen(!workersOpen)}
+                        data-workers-toggle
+                    >
+                        Workers
+                    </button>
+                )}
             </div>
-
             <div className="bar dim-panel glass" id="controls">
                 <button
                     type="button"
@@ -309,17 +346,20 @@ export function App() {
                 </button>
             </div>
 
-            <div id="legend">
-                <span className="k">
-                    <span className="sw mod" /> module
-                </span>
-                <span className="k">
-                    <span className="sw top" /> topic
-                </span>
-            </div>
-
-            <TopicsPanel settings={settings} table={table} change={change} />
-            <WorkersPanel show={settings.showWorkers} workers={workers} />
+            {!EMBED && (
+                <>
+                    <div id="legend">
+                        <span className="k">
+                            <span className="sw mod" /> module
+                        </span>
+                        <span className="k">
+                            <span className="sw top" /> topic
+                        </span>
+                    </div>
+                    <TopicsPanel settings={settings} table={table} change={change} />
+                </>
+            )}
+            <WorkersPanel show={EMBED ? workersOpen : settings.showWorkers} workers={workers} />
             {flow && cardModule && <ModuleCardView flow={flow} id={cardModule} pinned={!!settings.pinnedModule} />}
 
             {error && (
@@ -327,11 +367,48 @@ export function App() {
                     {error}
                 </div>
             )}
-            <div id="help">
-                DRAG pan · SCROLL zoom · HOVER module for card · CLICK pin · SPACE pause · G cycle layout · T topics · D
-                workers
-            </div>
+            {!EMBED && (
+                <div id="help">
+                    DRAG pan · SCROLL zoom · HOVER module for card · CLICK pin · SPACE pause · G cycle layout · T topics
+                    · D workers
+                </div>
+            )}
         </>
+    )
+}
+
+/** The standalone page's header: counts, total rate, pause and the live readout. */
+function Toolbar({ counts, totals, paused, live, act }: {
+    counts: { modules: number; topics: number }
+    totals: Totals | null
+    paused: boolean
+    live: boolean
+    act: (promise: Promise<unknown>) => void
+}) {
+    return (
+        <div className="bar dim-panel glass" id="toolbar">
+            <span className="logo dim-title">Module flow</span>
+            <span className="sep" />
+            <span className="readout">
+                <b>{counts.modules}</b> modules · <b>{counts.topics}</b> topics
+            </span>
+            <span className="readout">
+                <b>{(totals?.hz ?? 0).toFixed(1)}</b> Hz · <b>{human(totals?.bytesPerSec ?? 0)}</b>/s
+            </span>
+            <span className="sep" />
+            <button
+                type="button"
+                className="dim-btn ghost icon"
+                id="pause"
+                title={paused ? "resume (space)" : "pause (space)"}
+                onClick={() => act(call("POST", paused ? "api/resume" : "api/pause"))}
+            >
+                <Icon name={paused ? "play" : "pause"} size={14} />
+            </button>
+            <span id="conn" className={paused ? "paused" : live ? "live" : ""}>
+                {paused ? "❚❚ paused" : live ? "● live" : "○ waiting for run"}
+            </span>
+        </div>
     )
 }
 
@@ -387,7 +464,7 @@ function TopicsPanel(
                     aria-label="transport"
                 >
                     <option value="all">all</option>
-                    <option value="lcm">LCM</option>
+                    <option value="lcm">Multicast</option>
                     <option value="zenoh">Zenoh</option>
                 </select>
             </div>
@@ -412,7 +489,7 @@ function TopicsPanel(
                                 key={`${r.transport} ${r.topic}`}
                                 className={`trow ${isLive ? "live" : "idle"}`}
                                 style={{ "--node-accent": `var(${accentVar(r.topic)})` } as React.CSSProperties}
-                                title={`${r.topic} (${r.transport}) · ${r.messages} msg${
+                                title={`${r.topic} (${transportLabel(r.transport)}) · ${r.messages} msg${
                                     r.messages === 1 ? "" : "s"
                                 } · avg ${human(r.avgMessageBytes)} · last ${ago}`}
                             >

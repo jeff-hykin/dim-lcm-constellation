@@ -1,5 +1,5 @@
 {
-    description = "LCM Constellation: live LCM/Zenoh traffic over a blueprint's module graph, as a dimOS Desktop app. `nix build .#dimosApp` → bin/dimos-app-server (Deno backend + the native spy + built React frontend)";
+    description = "Constellation: live multicast/Zenoh traffic over a blueprint's module graph, as a dimOS Desktop app. `nix build .#dimosApp` → bin/dimos-app-server (Deno backend + the native spy + built React frontend)";
 
     # unstable: the spy's dependencies need a newer rustc than nixos-25.05 has
     inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -49,7 +49,7 @@
                 };
         in {
             packages = forAll (pkgs: rec {
-                # the LCM/Zenoh sniffer the backend runs (stdout: NDJSON traffic metadata)
+                # the multicast/Zenoh sniffer the backend runs (stdout: NDJSON traffic metadata)
                 spy = pkgs.rustPlatform.buildRustPackage {
                     pname = "constellation-spy";
                     version = "0.1.0";

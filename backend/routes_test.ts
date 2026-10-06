@@ -40,6 +40,26 @@ const desktop = Deno.serve({ port: 0, onListen: () => {} }, (request) => {
             ],
         })
     }
+    if (path === "/dimos/blueprints/stopped") {
+        // a newer dimos: wired topics (a remapped input meets its publisher), summaries, methods
+        return Response.json({
+            modules: [
+                {
+                    name: "lidar",
+                    class: "dimos.Lidar",
+                    summary: "Reads the lidar.",
+                    streams: [{ name: "cloud", type: "PointCloud2", direction: "out", topic: "/cloud" }],
+                    rpcs: [{ name: "spin", params: [], return_type: null, doc: "" }],
+                    skills: [],
+                },
+                {
+                    name: "mapper",
+                    class: "dimos.Mapper",
+                    streams: [{ name: "points", type: "PointCloud2", direction: "in", topic: "/cloud" }],
+                },
+            ],
+        })
+    }
     return new Response("no", { status: 404 })
 })
 
@@ -162,6 +182,24 @@ Deno.test({
         assertEquals((await call("GET", "api/graph")).json.blueprint, "")
 
         assertEquals((await call("GET", "api/nope")).status, 404)
+
+        // any blueprint from its wiring, running or not; a remapped stream joins its topic
+        monitor.desktopUrl = `http://127.0.0.1:${desktop.addr.port}`
+        const drawn = (await call("GET", "api/graph/blueprint?name=stopped")).json
+        assertEquals(drawn.blueprint, "stopped")
+        assertEquals(drawn.edges.map((e: { module: string; topic: string }) => `${e.module}:${e.topic}`), [
+            "lidar:cloud",
+            "mapper:cloud",
+        ])
+        assertEquals(drawn.modules.mapper.inputs, [{ name: "points", type: "PointCloud2", wire: "cloud" }])
+        assertEquals(drawn.modules.lidar.doc, "Reads the lidar.")
+        assertEquals(drawn.modules.lidar.rpcs.length, 1)
+        assertEquals((await call("GET", "api/graph/blueprint?name=nope")).status, 502)
+        assertEquals((await call("GET", "api/graph/blueprint")).status, 400)
+
+        // the UI's "multicast" is the spy's lcm transport
+        assertEquals((await call("POST", "api/settings", { transport: "multicast" })).json.transport, "lcm")
+        assertEquals((await call("POST", "api/settings", { transport: "all" })).json.transport, "all")
     },
 })
 

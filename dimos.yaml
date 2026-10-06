@@ -1,4 +1,4 @@
-title: LCM Constellation
+title: Constellation
 dimos-desktop-api: ">=2 <3"
 dimos-api:
     - GET /dimos/runs
@@ -8,8 +8,8 @@ caches:
       key: "dimos-desktop.cachix.org-1:A4P35aGJGmCan92LWyamtSFXMqaVE+VRFYnrJ8QMTeQ="
 agent:
     description: >-
-        LCM Constellation: live LCM and Zenoh traffic (every channel's rate and message size) over the running blueprint's
-        module graph, plus dtop's per-worker CPU/RAM
+        Constellation: live robot traffic (every topic's rate and message size, multicast and Zenoh) over the running
+        blueprint's module graph, plus dtop's per-worker CPU/RAM
     endpoints:
         - method: GET
           path: api/state
@@ -20,7 +20,7 @@ agent:
         - method: GET
           path: api/topics
           description: >-
-              Every LCM/Zenoh channel seen (and blueprint topics with no traffic yet, declaredOnly): rate (hz), bandwidth
+              Every multicast and Zenoh channel seen (and blueprint topics with no traffic yet, declaredOnly): rate (hz), bandwidth
               (bytesPerSec), average message size, total messages, last seen, publishing/subscribing modules
           params:
               filter:
@@ -28,7 +28,7 @@ agent:
                   description: only topics whose channel or message type contains this (case-insensitive)
               transport:
                   type: string
-                  description: "all (default), lcm or zenoh"
+                  description: "all (default), multicast or zenoh"
               active:
                   type: boolean
                   description: only topics with traffic in the last 5 s
@@ -51,8 +51,8 @@ agent:
         - method: POST
           path: api/topic/sample
           description: >-
-              Wait for the next message on a topic and return its size and the first bytes (hex + printable text; an LCM
-              message starts with its type fingerprint)
+              Wait for the next message on a topic and return its size and the first bytes (hex + printable text; a
+              multicast message starts with its 8-byte type fingerprint)
           params:
               topic:
                   type: string
@@ -64,6 +64,16 @@ agent:
         - method: GET
           path: api/graph
           description: 'The running blueprint''s module graph: modules (with in/out streams) and module→topic edges'
+        - method: GET
+          path: api/graph/blueprint
+          description: >-
+              Any blueprint's module graph from its static wiring, running or not (no traffic): modules with their
+              streams and module→topic edges
+          params:
+              name:
+                  type: string
+                  required: true
+                  description: the blueprint, e.g. unitree-go2-basic
         - method: POST
           path: api/graph/refresh
           description: Re-read the running blueprint from Desktop now (it is also re-read every 4 s)
@@ -99,7 +109,7 @@ agent:
                   description: topic table filter text (empty for none)
               transport:
                   type: string
-                  description: "topic table transport: all, lcm or zenoh"
+                  description: "topic table transport: all, multicast or zenoh"
               showTopics:
                   type: boolean
                   description: show the topics table

@@ -1,18 +1,18 @@
-# dim-lcm-constellation
+# Constellation
 
-A [dimOS Desktop](https://github.com/dimensionalOS/dimos-desktop) app that shows **live LCM and Zenoh traffic** over the
-running blueprint's module graph: modules and topics are nodes, each topic shows its live rate, and every packet lights
-up the edges it travelled along. A topics table gives each channel's rate and bandwidth, and a workers panel shows
-dtop's per-worker CPU/RAM (from `/resource_stats`, for blueprints run with `--dtop`).
+A [dimOS Desktop](https://github.com/dimensionalOS/dimos-desktop) app that shows **live multicast and Zenoh traffic**
+over the running blueprint's module graph: modules and topics are nodes, each topic shows its live rate, and every
+packet lights up the edges it travelled along. A topics table gives each channel's rate and bandwidth, and a workers
+panel shows dtop's per-worker CPU/RAM (from `/resource_stats`, for blueprints run with `--dtop`).
 
-| Constellation                                         | Live traffic                           |
-| ----------------------------------------------------- | -------------------------------------- |
-| ![Module/topic constellation](docs/constellation.png) | ![Live LCM packet flow](docs/live.png) |
+| Constellation                                         | Live traffic                       |
+| ----------------------------------------------------- | ---------------------------------- |
+| ![Module/topic constellation](docs/constellation.png) | ![Live packet flow](docs/live.png) |
 
 ## How it works
 
-- `spy/` (Rust) passively sniffs LCM (UDP multicast 239.255.76.67:7667) and Zenoh (a peer `**` subscriber) and prints
-  NDJSON metadata (channel, count, bytes) every 50 ms; payloads are never decoded, except `/resource_stats` and a
+- `spy/` (Rust) passively sniffs dimos's UDP multicast (239.255.76.67:7667) and Zenoh (a peer `**` subscriber) and
+  prints NDJSON metadata (channel, count, bytes) every 50 ms; payloads are never decoded, except `/resource_stats` and a
   `sample <channel>` asked for on stdin.
 - `backend/` (Deno) runs the spy, keeps every channel's 5 s rate, sizes and 60 s history, reads the running blueprint
   from Desktop (`/dimos/runs`, `/dimos/blueprints/<name>`), and serves it all as HTTP endpoints (`backend/routes.ts`),
@@ -24,8 +24,15 @@ dtop's per-worker CPU/RAM (from `/resource_stats`, for blueprints run with `--dt
 - `frontend/` (TypeScript, Vite, React) draws the graph (DOM nodes + an SVG edge layer, force or Graphviz layouts).
 
 Endpoints include `GET api/topics` (rate, bandwidth, message size, last seen, publishers/subscribers per channel),
-`GET api/topic`, `POST api/topic/sample`, `GET api/graph`, `GET api/workers`, `POST api/pause|resume|reset`,
-`POST api/settings` (layout, table sort/filter, panels, pinned module card), `GET api/view` (the graph as a PNG).
+`GET api/topic`, `POST api/topic/sample`, `GET api/graph`, `GET api/graph/blueprint` (any blueprint, from its wiring),
+`GET api/workers`, `POST api/pause|resume|reset`, `POST api/settings` (layout, table sort/filter, panels, pinned module
+card), `GET api/view` (the graph as a PNG).
+
+Desktop's blueprint Details embeds the page as its module graph with `?embed&blueprint=<name>`: no header readouts,
+topics table, legend or help text, the layouts and a workers toggle (hidden by default) at the bottom right, and that
+blueprint drawn from its wiring when it isn't the one running. A module click is posted to Desktop
+(`{type: "constellation:module", module}`), and Desktop lights a module or topic with
+`{type: "constellation:focus", module?, topic?}`.
 
 ## Install
 

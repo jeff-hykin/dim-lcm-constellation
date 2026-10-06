@@ -2,7 +2,7 @@
 // transform, so cards, edges and labels scale together and stay crisp). It's imperative on purpose: a force sim and
 // 60 fps edge animation over hundreds of elements. React (App.tsx) owns the panels around it and feeds it the
 // backend's graph, stats and packet events.
-import { accentForType, accentVar, agoText, channelType, normBase } from "./format.ts"
+import { accentForType, accentVar, agoText, channelType, normBase, transportLabel } from "./format.ts"
 import { iconSvg } from "./icons.tsx"
 import type { Graph, ModuleCard, TopicRow } from "./types.ts"
 
@@ -97,6 +97,10 @@ export class FlowGraph {
     paused = false
     private filter = ""
     hovered: Node | null = null
+    /** nodes lit from outside (Desktop's module list), shown like a hover while nothing is hovered */
+    private spot: string[] = []
+    /** the nodes lit now: the hovered one, else the spotlight */
+    private lit = new Set<string>()
     private panning: { sx: number; sy: number; ox: number; oy: number } | null = null
     private dragNode: { n: Node; sx: number; sy: number; ox: number; oy: number } | null = null
     private moved = false
@@ -277,6 +281,7 @@ export class FlowGraph {
             this.buildDom()
             this.dirty = false
             this.applyGraphLayout()
+            this.applyFocus()
         }
     }
 
@@ -711,7 +716,7 @@ export class FlowGraph {
                 el.innerHTML =
                     `<span class="name"></span><span class="rate"></span><span class="type"></span><span class="handle l"></span><span class="handle r"></span>`
                 el.querySelector(".name")!.textContent = n.label
-                el.querySelector(".type")!.textContent = n.msgType || n.transport.toUpperCase() || ""
+                el.querySelector(".type")!.textContent = n.msgType || transportLabel(n.transport).toUpperCase() || ""
             }
             this.viewport.appendChild(el)
             n.el = el
@@ -978,20 +983,36 @@ export class FlowGraph {
             return
         }
         this.hovered = n
-        const focus = new Set<string>()
-        if (n) {
-            focus.add(n.id)
+        this.applyFocus()
+        this.callbacks.onHover(n)
+    }
+
+    /** Light a module (`m:<name>`) or a topic (its name: every node on it) and their neighbours, as a hover does;
+     * null clears it. */
+    spotlight(target: { module?: string; topic?: string } | null) {
+        this.spot = target?.module
+            ? ["m:" + target.module]
+            : target?.topic
+            ? this.topicBase.get(normBase(target.topic)) ?? []
+            : []
+        this.applyFocus()
+    }
+
+    private applyFocus() {
+        const lit = this.hovered ? [this.hovered] : this.spot.map((id) => this.nodes.get(id)).filter((n) => !!n)
+        this.lit = new Set(lit.map((n) => n.id))
+        const focus = new Set<string>(this.lit)
+        for (const n of lit) {
             for (const e of this.edgesOf(n)) {
                 focus.add(e.from)
                 focus.add(e.to)
             }
         }
         for (const node of this.nodes.values()) {
-            node.el?.classList.toggle("dim", !!n && !focus.has(node.id))
-            node.el?.classList.toggle("hi", node === n)
+            node.el?.classList.toggle("dim", lit.length > 0 && !focus.has(node.id))
+            node.el?.classList.toggle("hi", this.lit.has(node.id))
         }
         this.refreshEdges()
-        this.callbacks.onHover(n)
     }
 
     // ── animation ──
@@ -1001,7 +1022,7 @@ export class FlowGraph {
             if (!e.el) {
                 continue
             }
-            const on = !!this.hovered && (e.from === this.hovered.id || e.to === this.hovered.id)
+            const on = this.lit.has(e.from) || this.lit.has(e.to)
             const lit = e.active > 0.05
             const hot = on || lit
             const accent = `var(${this.hubOf(e).accent})`
