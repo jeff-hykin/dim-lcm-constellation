@@ -9,7 +9,6 @@ import { Icon } from "./icons.tsx"
 import { onThemeChange } from "./dim-app/theme.js"
 import { EmptyState } from "./dim-app/react.js"
 import { getZenoh } from "./dim-app/zenoh.js"
-import { ThemeToggle } from "./ThemeToggle.tsx"
 import type { Graph, Settings, State, TopicRow, Totals, WorkerStats, WorkersView } from "./types.ts"
 
 const DEFAULT_SETTINGS: Settings = {
@@ -265,7 +264,6 @@ export function App() {
                 <span id="conn" className={paused ? "paused" : live ? "live" : ""}>
                     {paused ? "❚❚ paused" : live ? "● live" : "○ waiting for run"}
                 </span>
-                <ThemeToggle />
             </div>
 
             <div className="bar dim-tabs" id="layouts" role="tablist">
