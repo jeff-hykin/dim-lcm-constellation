@@ -32,7 +32,7 @@ Desktop's blueprint Details embeds the page as its module graph with `?embed&blu
 topics table, legend or help text, the layouts and a workers toggle (hidden by default) at the bottom right, and that
 blueprint drawn from its wiring when it isn't the one running. A module click is posted to Desktop
 (`{type: "constellation:module", module}`), and Desktop lights a module or topic with
-`{type: "constellation:focus", module?, topic?}`.
+`{type: "constellation:focus", module?, topic?}` once the page says `{type: "constellation:ready"}`.
 
 ## Install
 

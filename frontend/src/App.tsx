@@ -13,7 +13,8 @@ import type { Graph, Settings, State, TopicRow, Totals, WorkerStats, WorkersView
 
 // Desktop's blueprint Details embeds this page as its module graph (?embed&blueprint=<name>): just the graph, titled
 // Module Graph, the layouts and a workers toggle at the bottom right, and that blueprint drawn from its wiring when it
-// isn't the one running. Module clicks go to Desktop (postMessage), which can light modules and topics here.
+// isn't the one running. Module clicks go to Desktop (postMessage), which can light modules and topics here
+// (constellation:ready says this page listens).
 const PARAMS = new URLSearchParams(location.search)
 const EMBED = PARAMS.has("embed")
 const EMBED_BLUEPRINT = PARAMS.get("blueprint") ?? ""
@@ -184,6 +185,10 @@ export function App() {
             }
         }
         addEventListener("message", onMessage)
+        // listening now: Desktop sends what to light
+        if (EMBED && parent !== window) {
+            parent.postMessage({ type: "constellation:ready" }, location.origin)
+        }
         return () => removeEventListener("message", onMessage)
     }, [])
 
