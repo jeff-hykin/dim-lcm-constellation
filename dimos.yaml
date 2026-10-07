@@ -5,7 +5,7 @@ uses:
         - GET /runs
         - "GET /blueprints/{name}"
     # the dim-app SDK's zenoh client (backend state, events): the zenoh bridge and how it finds it
-    "@zenoh-gateway": ">=0.4 <0.5"
+    "@zenoh-gateway": ">=0.5 <0.6"
 caches:
     - url: "https://dimos-desktop.cachix.org"
       key: "dimos-desktop.cachix.org-1:A4P35aGJGmCan92LWyamtSFXMqaVE+VRFYnrJ8QMTeQ="

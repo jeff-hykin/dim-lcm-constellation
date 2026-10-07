@@ -45,7 +45,7 @@ export function App() {
     const [lastStatsAt, setLastStatsAt] = useState(0)
     const [hovered, setHovered] = useState<Node | null>(null)
     const [error, setError] = useState<string | null>(null)
-    // the first-run message: the server unreachable, the zenoh-web link lost
+    // the first-run message: the server unreachable, the zenoh-gateway link lost
     const [backendDown, setBackendDown] = useState(false)
     const [linkLost, setLinkLost] = useState(false)
     const [, setTick] = useState(0)
@@ -87,7 +87,7 @@ export function App() {
     const graphStateRef = useRef(graph)
     graphStateRef.current = graph
 
-    // initial state, then the backend's events (and the state again after the zenoh-web link comes back)
+    // initial state, then the backend's events (and the state again after the zenoh-gateway link comes back)
     useEffect(() => {
         const load = () => {
             call<Graph>("GET", "api/graph").then((g) => {
@@ -268,8 +268,8 @@ export function App() {
             testId: "onboard-link-lost",
             label: "No data link",
             tone: "warn" as const,
-            title: "Can't reach the robot data bridge",
-            body: "Desktop's zenoh-web bridge is down or blocked. This page reconnects by itself when it's back.",
+            title: "Can't reach the robot data gateway",
+            body: "Desktop's zenoh-gateway is down or blocked. This page reconnects by itself when it's back.",
             actions: [{ label: "Open Settings", app: "settings" }, { label: "Try again", onClick: retry }],
         }
         : !graph || graph.blueprint && !empty

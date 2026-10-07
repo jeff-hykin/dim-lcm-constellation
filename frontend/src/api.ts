@@ -19,7 +19,7 @@ export async function call<T = unknown>(method: string, path: string, body?: unk
 }
 
 /**
- * The backend's events over the page's one zenoh-web connection (Desktop's docs/events.md): the ordered frontend topic
+ * The backend's events over the page's one zenoh-gateway connection (Desktop's docs/events.md): the ordered frontend topic
  * `events`, plus `stats` and `packets` (latest-wins). `onConnected(true)` on connect and every reconnect (re-GET then),
  * `(false)` when lost. The page tells the backend it's open (POST api/pages/<id>, every 10 s) so it publishes stats, and
  * `send` answers a view-request (POST api/views/<id>).

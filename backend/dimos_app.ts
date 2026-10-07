@@ -9,6 +9,8 @@ export type DimosApp = {
     path: string | null
     dataDir: string | null
     desktopUrl: string | null
+    zenohGatewayUrl: string | null
+    /** deprecated: the gateway at its old path, /zenoh-web */
     zenohWebUrl: string | null
     zenohConnect: string | null
     dimosDir: string | null
@@ -38,6 +40,8 @@ export function readDimosApp(args: string[] = Deno.args): DimosApp {
         path,
         dataDir: given.dataDir ?? env("DIMOS_APP_DATA") ?? null,
         desktopUrl,
+        // Desktops that only pass flags/env serve zenoh-web 0.4, which the page's client doesn't speak
+        zenohGatewayUrl: given.zenohGatewayUrl ?? null,
         zenohWebUrl: given.zenohWebUrl ?? flag("zenoh-web-url") ?? env("ZENOH_WEB_URL") ?? null,
         zenohConnect: given.zenohConnect ?? flag("zenoh-connect") ?? env("ZENOH_CONNECT") ?? null,
         dimosDir: given.dimosDir ?? flag("dimos-dir") ?? env("DIMOS_DIR") ?? null,
