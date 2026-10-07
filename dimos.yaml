@@ -1,5 +1,5 @@
 title: Constellation
-dimos-desktop-api: ">=2 <3"
+spec-version: v1.0 # the dimos.yaml spec version this file follows
 dimos-api:
     - GET /dimos/runs
     - "GET /dimos/blueprints/{name}"
