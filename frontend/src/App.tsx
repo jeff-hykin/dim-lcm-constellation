@@ -6,9 +6,9 @@ import { call, events } from "./api.ts"
 import { accentVar, agoText, heatColor, heatFracLog, human, humanBits, humanSecs, transportLabel } from "./format.ts"
 import { FlowGraph, LAYOUTS, type Node } from "./graph.ts"
 import { Icon } from "./icons.tsx"
-import { onThemeChange } from "./dim-app/theme.js"
-import { EmptyState } from "./dim-app/react.js"
-import { getZenoh } from "./dim-app/zenoh.js"
+import { onThemeChange } from "./dim-app/source/theme.js"
+import { EmptyState } from "./dim-app/source/react.js"
+import { getZenoh } from "./dim-app/source/zenoh.js"
 import type { Graph, Settings, State, TopicRow, Totals, WorkerStats, WorkersView } from "./types.ts"
 
 // Desktop's blueprint Details embeds this page as its module graph (?embed&blueprint=<name>): just the graph, titled

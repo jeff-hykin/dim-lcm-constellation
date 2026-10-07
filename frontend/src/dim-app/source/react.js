@@ -1,7 +1,7 @@
 // React bindings: useBackendState, snapshot + live backend state (backend_state.js); EmptyState and useAppInstalled
 // (desktop.js). Imports "react" from the app.
 //
-//     import { useBackendState } from "./dim-app/react.js"
+//     import { useBackendState } from "./dim-app/source/react.js"
 //     const [recordings, { loading, error, refresh }] = useBackendState("recordings") // GET api/state/recordings
 //     const [library] = useBackendState("api/library", { key: "library" })            // re-GET on state/library events
 

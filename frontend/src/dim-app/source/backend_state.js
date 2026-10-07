@@ -3,7 +3,7 @@
 // `{key, version}` on `<ns>/apps/<name>/frontend/state/<key>`; the page re-GETs (debounced) when a newer version
 // arrives, and after its zenoh-gateway connection comes back (events sent while it was down are gone).
 //
-//     import { watchBackendState } from "./dim-app/backend_state.js"
+//     import { watchBackendState } from "./dim-app/source/backend_state.js"
 //     const watch = watchBackendState("recordings", ({ data, loading, error }) => render(data)) // GET api/state/recordings
 //     watch.refresh() // after this page changed it itself (or just wait for the event)
 //     watch.stop()

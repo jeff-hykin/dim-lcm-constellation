@@ -1,6 +1,6 @@
 // Opening other apps from an app, and first-run / empty-state messages that send the user there.
 //
-//     import { appInstalled, emptyState, openApp } from "./dim-app/desktop.js"
+//     import { appInstalled, emptyState, openApp } from "./dim-app/source/desktop.js"
 //     await openApp("launcher", { kind: "blueprint", stream: "cmd_vel" }) // the Launcher, on blueprints that drive
 //     await openApp("dim-controller", { path: "#record" })                 // another app (its install name)
 //     if (!(await appInstalled("dim-controller"))) { ... }                 // built-ins are always installed
@@ -25,6 +25,7 @@ export const BUILTIN_APPS = Object.freeze({
 })
 
 /** The Launcher's filters `openApp("launcher", params)` sets (the rest are cleared, so an old search can't hide them). */
+const LAUNCHER_FIELDS = ["query", "kind", "robot", "selected", "stream"]
 
 /** True when this page is served by dimOS Desktop (under /apps/<name>/). */
 export function underDesktop() {
@@ -112,17 +113,19 @@ export async function openApp(id, params = {}) {
         }
         app = found.name ?? found.id
     }
-    // the Launcher's filters go along as its deep link (?q=&robot=&needs=&blueprint=), no Desktop endpoint needed
-    let path = params.path ?? null
-    if (app === "launcher" && !path) {
-        const link = new URLSearchParams()
-        const set = (key, value) => value && link.set(key, String(value))
-        set("q", params.query)
-        set("robot", params.robot)
-        set("needs", params.stream)
-        set("blueprint", String(params.selected ?? "").replace(/^blueprint:/, ""))
-        path = link.toString() ? `?${link}` : null
+    if (app === "launcher") {
+        const state = Object.fromEntries(LAUNCHER_FIELDS.map((field) => [field, params[field] ?? ""]))
+        try {
+            await fetch("/api/launcher/state", {
+                method: "PUT",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify(state),
+            })
+        } catch {
+            // the Launcher still opens, unfiltered
+        }
     }
+    const path = params.path ?? null
     if (inDesktopShell()) {
         parent.postMessage({ dimosShell: 1, type: "open_app", app, path }, location.origin)
         return true

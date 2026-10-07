@@ -2,7 +2,7 @@
 // `POST <desktopUrl>/desktop/frontend/<app>/<topic…>`, which publishes the body unchanged on
 // `<ns>/apps/<app>/frontend/<topic…>`, where the app's pages subscribe (zenoh.js's subscribeFrontend).
 //
-//     import { publishFrontend, stateChanged } from "./dim-app/frontend_publish.js"
+//     import { publishFrontend, stateChanged } from "./dim-app/source/frontend_publish.js"
 //     publishFrontend("status", { battery: 0.82 })   // JSON
 //     stateChanged("recordings")                     // {key:"recordings", version} on state/recordings: pages re-GET
 //

@@ -2,8 +2,8 @@
 // way. `routes` is also served as agent.json (Desktop's agent finds the endpoints there; dimos.yaml repeats them, and
 // `deno task check-endpoints` keeps the two in step). Docs: dimos-desktop docs/apps.md, docs/agent.md.
 
-// @ts-types="./dim-app/frontend_publish.d.ts"
-import { publishFrontend, stateChanged } from "./dim-app/frontend_publish.js"
+// @ts-types="./dim-app/source/frontend_publish.d.ts"
+import { publishFrontend, stateChanged } from "./dim-app/source/frontend_publish.js"
 
 export type Params = Record<string, { type: string; description?: string; required?: boolean; items?: unknown }>
 

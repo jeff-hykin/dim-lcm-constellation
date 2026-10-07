@@ -1,7 +1,7 @@
 // The app's backend API (backend/routes.ts), by relative URL: the page lives at Desktop's /apps/<name>/.
 import type { AppEvent } from "./types.ts"
-import { appEvents } from "./dim-app/events.js"
-import { getZenoh } from "./dim-app/zenoh.js"
+import { appEvents } from "./dim-app/source/events.js"
+import { getZenoh } from "./dim-app/source/zenoh.js"
 
 export class ApiError extends Error {}
 
