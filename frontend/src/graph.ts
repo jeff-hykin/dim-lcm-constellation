@@ -553,6 +553,10 @@ export class FlowGraph {
                 : '  graph [overlap=false, sep="+20", splines=true];',
         )
         lines.push("  node [fixedsize=true, shape=box];")
+        if (engine === "dot") {
+            // left to right: edges leave a box on its right side and arrive on the left one
+            lines.push("  edge [tailport=e, headport=w];")
+        }
         arr.forEach((n, i) =>
             lines.push(`  n${i} [width=${(n.w / PT_PER_IN).toFixed(3)}, height=${(n.h / PT_PER_IN).toFixed(3)}];`)
         )
