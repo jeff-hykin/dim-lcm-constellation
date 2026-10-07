@@ -10,7 +10,7 @@ function readEnv(name) {
 }
 
 /**
- * `{ version, name, socket, url, path, dataDir, desktopUrl, zenohWebUrl, zenohConnect, dimosDir, dimosPython,
+ * `{ version, name, socket, url, path, dataDir, desktopUrl, zenohGatewayUrl, zenohWebUrl (deprecated), zenohConnect, dimosDir, dimosPython,
  * recordingsDir, zenohNamespace, zenohPrefix }`; a field the Desktop didn't give is null.
  * @param {string[]} [args] the server's argv (the old flags)
  */
@@ -39,6 +39,8 @@ function fallback(args) {
         path,
         dataDir: readEnv("DIMOS_APP_DATA") ?? null,
         desktopUrl,
+        // Desktops that only pass flags/env serve zenoh-web 0.4, which this client doesn't speak
+        zenohGatewayUrl: null,
         zenohWebUrl: flag("zenoh-web-url") ?? readEnv("ZENOH_WEB_URL") ?? null,
         zenohConnect: flag("zenoh-connect") ?? readEnv("ZENOH_CONNECT") ?? null,
         dimosDir: flag("dimos-dir") ?? readEnv("DIMOS_DIR") ?? null,

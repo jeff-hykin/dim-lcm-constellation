@@ -1,7 +1,7 @@
 // Snapshot + live for a piece of backend state (Desktop's docs/events.md): GET it over HTTP, then re-GET whenever the
 // backend says it changed. The backend says so with `stateChanged(key)` (frontend_publish.js), which publishes
 // `{key, version}` on `<ns>/apps/<name>/frontend/state/<key>`; the page re-GETs (debounced) when a newer version
-// arrives, and after its zenoh-web connection comes back (events sent while it was down are gone).
+// arrives, and after its zenoh-gateway connection comes back (events sent while it was down are gone).
 //
 //     import { watchBackendState } from "./dim-app/backend_state.js"
 //     const watch = watchBackendState("recordings", ({ data, loading, error }) => render(data)) // GET api/state/recordings

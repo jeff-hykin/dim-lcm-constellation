@@ -1,23 +1,24 @@
 title: Constellation
 spec-version: v1.0 # the dimos.yaml spec version this file follows
-dimos-api:
-    - GET /dimos/runs
-    - "GET /dimos/blueprints/{name}"
-# the dim-app SDK's zenoh client (backend state, events): /zenoh-web and how it finds it
-zenoh-web: ">=0.4 <0.5"
-# what its server answers only its own pages (its agent: endpoints are the public API)
-private:
-    - api/pages/*
-    - api/views/*
-    - api/state/*
-    - api/graph/*
-    - api/topic/*
-    - api/settings/*
-    - api/events/*
+uses:
+    "@dimos-gateway":
+        - GET /runs
+        - "GET /blueprints/{name}"
+    # the dim-app SDK's zenoh client (backend state, events): the zenoh bridge and how it finds it
+    "@zenoh-gateway": ">=0.4 <0.5"
 caches:
     - url: "https://dimos-desktop.cachix.org"
       key: "dimos-desktop.cachix.org-1:A4P35aGJGmCan92LWyamtSFXMqaVE+VRFYnrJ8QMTeQ="
-agent:
+provides:
+    # what its server answers only its own pages (its endpoints: below are the public API)
+    private:
+        - api/pages/*
+        - api/views/*
+        - api/state/*
+        - api/graph/*
+        - api/topic/*
+        - api/settings/*
+        - api/events/*
     description: >-
         Constellation: live robot traffic (every topic's rate and message size, multicast and Zenoh) over the running
         blueprint's module graph, plus dtop's per-worker CPU/RAM
