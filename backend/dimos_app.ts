@@ -1,8 +1,8 @@
-// What dimOS Desktop tells this server at start: the DIMOS_APP env var, one JSON object (docs/apps.md in
-// dimos-desktop). Desktops from before 2026-10-05 don't set it; their flags and env vars are the fallback.
+// What dimOS Desktop tells this server at start: the DIMOS_APP env var, one JSON object and the whole interface
+// (docs/apps.md in dimos-desktop).
 
 export type DimosApp = {
-    version: number
+    version: number | null
     name: string | null
     socket: string | null
     url: string | null
@@ -10,48 +10,39 @@ export type DimosApp = {
     dataDir: string | null
     desktopUrl: string | null
     zenohGatewayUrl: string | null
-    /** deprecated: the gateway at its old path, /zenoh-web */
-    zenohWebUrl: string | null
     zenohConnect: string | null
+    zenohNamespace: string | null
+    zenohPrefix: string | null
     dimosDir: string | null
     dimosPython: string | null
     recordingsDir: string | null
 }
 
-function env(name: string): string | undefined {
-    return Deno.env.get(name) || undefined
+const EMPTY: DimosApp = {
+    version: null,
+    name: null,
+    socket: null,
+    url: null,
+    path: null,
+    dataDir: null,
+    desktopUrl: null,
+    zenohGatewayUrl: null,
+    zenohConnect: null,
+    zenohNamespace: null,
+    zenohPrefix: null,
+    dimosDir: null,
+    dimosPython: null,
+    recordingsDir: null,
 }
 
-export function readDimosApp(args: string[] = Deno.args): DimosApp {
-    const flag = (name: string) => {
-        const index = args.indexOf(`--${name}`)
-        return index === -1 ? undefined : args[index + 1]
-    }
-    const json = env("DIMOS_APP")
-    const given: Partial<DimosApp> = json ? JSON.parse(json) : {}
-    const name = given.name ?? env("DIMOS_APP_NAME") ?? null
-    const desktopUrl = given.desktopUrl ?? flag("desktop-url") ?? env("DIMOS_DESKTOP_URL") ?? null
-    const path = given.path ?? (name ? `/apps/${name}/` : null)
-    return {
-        version: given.version ?? 0,
-        name,
-        socket: given.socket ?? flag("socket") ?? env("DIMOS_APP_SOCKET") ?? null,
-        url: given.url ?? (desktopUrl && path ? desktopUrl + path : null),
-        path,
-        dataDir: given.dataDir ?? env("DIMOS_APP_DATA") ?? null,
-        desktopUrl,
-        // Desktops that only pass flags/env serve zenoh-web 0.4, which the page's client doesn't speak
-        zenohGatewayUrl: given.zenohGatewayUrl ?? null,
-        zenohWebUrl: given.zenohWebUrl ?? flag("zenoh-web-url") ?? env("ZENOH_WEB_URL") ?? null,
-        zenohConnect: given.zenohConnect ?? flag("zenoh-connect") ?? env("ZENOH_CONNECT") ?? null,
-        dimosDir: given.dimosDir ?? flag("dimos-dir") ?? env("DIMOS_DIR") ?? null,
-        dimosPython: given.dimosPython ?? flag("dimos-python") ?? env("DIMOS_PYTHON") ?? null,
-        recordingsDir: given.recordingsDir ?? env("DIMOS_RECORDINGS_DIR") ?? null,
-    }
+/** DIMOS_APP's fields; one it lacks (or all of them, run outside Desktop) is null. */
+export function readDimosApp(): DimosApp {
+    const json = Deno.env.get("DIMOS_APP")
+    return { ...EMPTY, ...(json ? JSON.parse(json) : {}) }
 }
 
-/** DIMOS_APP (else the older flags/env), read once; the raw JSON is logged once so the App Store's log shows it. */
+/** DIMOS_APP, read once; the raw JSON is logged once so the App Store's log shows it. */
 export const dimosApp: DimosApp = readDimosApp()
-if (env("DIMOS_APP")) {
-    console.error(`DIMOS_APP: ${env("DIMOS_APP")}`)
+if (Deno.env.get("DIMOS_APP")) {
+    console.error(`DIMOS_APP: ${Deno.env.get("DIMOS_APP")}`)
 }

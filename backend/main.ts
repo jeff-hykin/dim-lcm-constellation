@@ -1,5 +1,5 @@
 // dimos-app-server: this app's API and its built frontend on the unix socket Desktop gives, else a port. What Desktop
-// passes: the DIMOS_APP env var, one JSON object (docs/apps.md; dimos_app.ts, with older Desktops' flags as fallback).
+// passes: the DIMOS_APP env var, one JSON object and the whole interface (docs/apps.md; dimos_app.ts).
 import { dimosApp } from "./dimos_app.ts"
 import { handle, openPages, pagePlumbing, publishFrontend } from "./http.ts"
 import { DESCRIPTION, monitor, routes } from "./routes.ts"
