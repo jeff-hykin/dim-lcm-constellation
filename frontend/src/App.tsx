@@ -246,7 +246,6 @@ export function App() {
     const live = Date.now() - lastStatsAt < 4000
     const cardModule = settings.pinnedModule ? `m:${settings.pinnedModule}` : hovered?.id ?? null
     const empty = counts.modules === 0
-    const launcher = { kind: "blueprint" as const }
     const retry = () => location.reload()
     const drawn = EMBED_BLUEPRINT && staticGraph
     const onboarding = backendDown
@@ -288,7 +287,7 @@ export function App() {
             label: "No blueprint running",
             title: "Nothing is running yet",
             body: "Start a blueprint (or a replay, no robot needed) and its modules and topics light up here.",
-            actions: [{ label: "Open the Launcher", app: "launcher", params: launcher }],
+            actions: [{ label: "Open the Launcher", app: "launcher" }],
         }
 
     return (
