@@ -10,7 +10,7 @@
     },
     "dependencies": {
         "@hpcc-js/wasm-graphviz": "^1.29.2",
-        "dimos-react": "https://codeload.github.com/jeff-hykin/dimos-react/tar.gz/refs/tags/v0.1.2",
+        "dimos-react": "github:jeff-hykin/dimos-react#v0.2.0-beta3",
         "react": "^19.1.0",
         "react-dom": "^19.1.0"
     },

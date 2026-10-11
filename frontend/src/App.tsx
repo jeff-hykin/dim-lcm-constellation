@@ -27,6 +27,7 @@ import {
     Spinner,
     StatusDot,
     Table,
+    type TableColumn,
     Tabs,
     Text,
     Toolbar,
@@ -568,7 +569,7 @@ function TopicsPanel(
     const liveRows = rows.filter((r) => r.hz > 0)
     const maxHz = Math.max(0, ...liveRows.map((r) => r.hz))
     const maxBps = Math.max(0, ...liveRows.map((r) => r.bytesPerSec))
-    const columns = [
+    const columns: TableColumn<TopicRow>[] = [
         {
             key: "name",
             label: "Topic",
@@ -667,7 +668,7 @@ function TopicsPanel(
                 rowKey={(r: TopicRow) => `${r.transport} ${r.topic}`}
                 sortRows={false}
                 sort={{ key: settings.sort, dir: SORT_DIR[settings.sort] ?? "desc" }}
-                onSortChange={(next: { key: Settings["sort"] } | null) => next && change({ sort: next.key })}
+                onSortChange={(next) => next && change({ sort: next.key as Settings["sort"] })}
                 maxHeight="calc(100vh - 340px)"
                 empty={settings.filter
                     ? "no topics match the filter"
@@ -711,7 +712,7 @@ function WorkersPanel({ workers }: { workers: WorkersView | null }) {
     }
     const maxMem = Math.max(0, ...rows.map((r) => r.mem))
     const live = !!workers?.live
-    const columns = [
+    const columns: TableColumn<WorkerRow>[] = [
         {
             key: "role",
             label: "Worker",
