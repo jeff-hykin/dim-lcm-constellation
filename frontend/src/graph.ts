@@ -3,8 +3,14 @@
 // 60 fps edge animation over hundreds of elements. React (App.tsx) owns the panels around it and feeds it the
 // backend's graph, stats and packet events.
 import { accentForType, accentVar, agoText, channelType, normBase, transportLabel } from "./format.ts"
-import { iconSvg } from "./icons.tsx"
+import { ICONS } from "dimos-react"
 import type { Graph, ModuleCard, TopicRow } from "./types.ts"
+
+// dimos-react's chevron icon as markup, for the imperatively built module nodes
+const CHEVRON_SVG =
+    `<svg class="dr-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${
+        ICONS["chevron-right"]
+    }"/></svg>`
 
 export type Node = {
     id: string
@@ -41,7 +47,12 @@ type Edge = {
     active: number
     spline?: { x: number; y: number }[] | null
 }
-export type TopicStat = { hz: number; bps: number; count: number; lastAt: number }
+export type TopicStat = {
+    hz: number
+    bps: number
+    count: number
+    lastAt: number
+}
 
 export const LAYOUTS = [
     { id: "hierarchy", label: "Hierarchy", engine: "dot" }, // layered L→R DAG (default)
@@ -66,7 +77,9 @@ const RECENT_TOPIC_MS = 30 * 60 * 1000
 const ZOOM_SENSITIVITY = 0.0016
 
 // graphviz (WASM) is its own chunk, loaded the first time a non-force layout runs
-type Graphviz = Awaited<ReturnType<typeof import("@hpcc-js/wasm-graphviz").Graphviz.load>>
+type Graphviz = Awaited<
+    ReturnType<typeof import("@hpcc-js/wasm-graphviz").Graphviz.load>
+>
 let graphvizPromise: Promise<Graphviz> | null = null
 function loadGraphviz(): Promise<Graphviz> {
     if (!graphvizPromise) {
@@ -102,14 +115,19 @@ export class FlowGraph {
     /** the nodes lit now: the hovered one, else the spotlight */
     private lit = new Set<string>()
     private panning: { sx: number; sy: number; ox: number; oy: number } | null = null
-    private dragNode: { n: Node; sx: number; sy: number; ox: number; oy: number } | null = null
+    private dragNode:
+        | { n: Node; sx: number; sy: number; ox: number; oy: number }
+        | null = null
     private moved = false
     private frame = 0
     private cleanup: (() => void)[] = []
 
     constructor(
         container: HTMLElement,
-        private callbacks: { onHover: (node: Node | null) => void; onClick: (node: Node) => void },
+        private callbacks: {
+            onHover: (node: Node | null) => void
+            onClick: (node: Node) => void
+        },
     ) {
         this.flow = document.createElement("div")
         this.flow.id = "flow"
@@ -140,7 +158,10 @@ export class FlowGraph {
         }
         listen(this.flow, "wheel", (ev: WheelEvent) => {
             ev.preventDefault()
-            const factor = Math.min(1.2, Math.max(1 / 1.2, Math.exp(-ev.deltaY * ZOOM_SENSITIVITY)))
+            const factor = Math.min(
+                1.2,
+                Math.max(1 / 1.2, Math.exp(-ev.deltaY * ZOOM_SENSITIVITY)),
+            )
             this.zoomAt(ev.clientX, ev.clientY, factor)
         }, { passive: false })
         listen(this.flow, "mousedown", (ev: MouseEvent) => this.mouseDown(ev))
@@ -164,7 +185,12 @@ export class FlowGraph {
     }
 
     // ── model ──
-    private ensureNode(id: string, kind: Node["kind"], label: string, transport = ""): Node {
+    private ensureNode(
+        id: string,
+        kind: Node["kind"],
+        label: string,
+        transport = "",
+    ): Node {
         let n = this.nodes.get(id)
         if (!n) {
             n = {
@@ -196,11 +222,26 @@ export class FlowGraph {
         return n
     }
 
-    private addEdge(from: string, to: string, channel: string, directed: boolean, declared: string | null) {
+    private addEdge(
+        from: string,
+        to: string,
+        channel: string,
+        directed: boolean,
+        declared: string | null,
+    ) {
         const key = from + "|" + to
         let e = this.edgeIndex.get(key)
         if (!e) {
-            e = { from, to, channel, directed, declared, el: null, lab: null, active: 0 }
+            e = {
+                from,
+                to,
+                channel,
+                directed,
+                declared,
+                el: null,
+                lab: null,
+                active: 0,
+            }
             this.edges.push(e)
             this.edgeIndex.set(key, e)
             this.dirty = true
@@ -239,23 +280,39 @@ export class FlowGraph {
             this.ensureNode("m:" + mid, "module", info.label || mid)
             this.moduleInfo.set("m:" + mid, info)
         }
-        const pubsByTopic = new Map<string, { modId: string; type: string; declared: string | null }[]>()
-        const subsByTopic = new Map<string, { modId: string; declared: string | null }[]>()
+        const pubsByTopic = new Map<
+            string,
+            { modId: string; type: string; declared: string | null }[]
+        >()
+        const subsByTopic = new Map<
+            string,
+            { modId: string; declared: string | null }[]
+        >()
         for (const t of g.edges || []) {
             if (!t.topic || t.topic === "None") {
                 continue
             }
             const modId = "m:" + t.module
             if (!this.nodes.has(modId)) {
-                this.ensureNode(modId, "module", g.modules?.[t.module]?.label || t.module)
+                this.ensureNode(
+                    modId,
+                    "module",
+                    g.modules?.[t.module]?.label || t.module,
+                )
             }
             if (t.direction === "in") {
                 push(subsByTopic, t.topic, { modId, declared: t.declared })
             } else {
-                push(pubsByTopic, t.topic, { modId, type: t.type, declared: t.declared })
+                push(pubsByTopic, t.topic, {
+                    modId,
+                    type: t.type,
+                    declared: t.declared,
+                })
             }
         }
-        for (const name of new Set([...pubsByTopic.keys(), ...subsByTopic.keys()])) {
+        for (
+            const name of new Set([...pubsByTopic.keys(), ...subsByTopic.keys()])
+        ) {
             const pubs = pubsByTopic.get(name) || []
             const subs = subsByTopic.get(name) || []
             const instances = pubs.length ? pubs : [{ modId: null, type: "", declared: null }]
@@ -328,10 +385,14 @@ export class FlowGraph {
             if (row.declaredOnly || !row.transport) {
                 continue
             }
-            if (row.lastSeenMsAgo !== null && row.lastSeenMsAgo > RECENT_TOPIC_MS && !this.topicBase.has(row.name)) {
+            if (
+                row.lastSeenMsAgo !== null && row.lastSeenMsAgo > RECENT_TOPIC_MS &&
+                !this.topicBase.has(row.name)
+            ) {
                 continue
             }
-            const ids = this.topicBase.get(row.name) ?? [this.ensureDynamicTopic(row.name, row.transport)]
+            const ids = this.topicBase.get(row.name) ??
+                [this.ensureDynamicTopic(row.name, row.transport)]
             const lastAt = now - (row.lastSeenMsAgo ?? Infinity)
             for (const id of ids) {
                 const stat = next.get(id) ?? { hz: 0, bps: 0, count: 0, lastAt: 0 }
@@ -409,7 +470,8 @@ export class FlowGraph {
             return true
         }
         if (n.kind === "topic") {
-            return n.label.toLowerCase().includes(this.filter) || n.msgType.toLowerCase().includes(this.filter)
+            return n.label.toLowerCase().includes(this.filter) ||
+                n.msgType.toLowerCase().includes(this.filter)
         }
         return this.edgesOf(n).some((e) => {
             const other = this.nodes.get(e.from === n.id ? e.to : e.from)
@@ -558,7 +620,9 @@ export class FlowGraph {
             lines.push("  edge [tailport=e, headport=w];")
         }
         arr.forEach((n, i) =>
-            lines.push(`  n${i} [width=${(n.w / PT_PER_IN).toFixed(3)}, height=${(n.h / PT_PER_IN).toFixed(3)}];`)
+            lines.push(
+                `  n${i} [width=${(n.w / PT_PER_IN).toFixed(3)}, height=${(n.h / PT_PER_IN).toFixed(3)}];`,
+            )
         )
         const emitted: Edge[] = []
         for (const e of this.edges) {
@@ -581,7 +645,10 @@ export class FlowGraph {
         const boxH = bb[3]
         const cx = bb[2] / 2
         const cy = bb[3] / 2
-        const toWorld = (x: number, y: number) => ({ x: x - cx, y: (boxH - y) - cy })
+        const toWorld = (x: number, y: number) => ({
+            x: x - cx,
+            y: (boxH - y) - cy,
+        })
         const objects: { _gvid: number; name: string; pos?: string }[] = json.objects || []
         const gvidName = new Map(objects.map((o) => [o._gvid, o.name]))
         for (const o of objects) {
@@ -603,10 +670,15 @@ export class FlowGraph {
         }
         const byPair = new Map<string, Edge[]>()
         for (const e of emitted) {
-            push(byPair, `n${arr.indexOf(this.nodes.get(e.from)!)}>n${arr.indexOf(this.nodes.get(e.to)!)}`, e)
+            push(
+                byPair,
+                `n${arr.indexOf(this.nodes.get(e.from)!)}>n${arr.indexOf(this.nodes.get(e.to)!)}`,
+                e,
+            )
         }
         for (const ge of json.edges || []) {
-            const e = byPair.get(`${gvidName.get(ge.tail)}>${gvidName.get(ge.head)}`)?.shift()
+            const e = byPair.get(`${gvidName.get(ge.tail)}>${gvidName.get(ge.head)}`)
+                ?.shift()
             if (!e) {
                 continue
             }
@@ -676,7 +748,11 @@ export class FlowGraph {
         try {
             const gv = await loadGraphviz()
             const { dot, arr, emitted } = this.buildDot(layout.engine)
-            this.applyEnginePositions(JSON.parse(gv.layout(dot, "json", layout.engine as "dot")), arr, emitted)
+            this.applyEnginePositions(
+                JSON.parse(gv.layout(dot, "json", layout.engine as "dot")),
+                arr,
+                emitted,
+            )
             this.simFrozen = true
             this.heat = 0
             this.positionAll()
@@ -706,9 +782,7 @@ export class FlowGraph {
             el.dataset.id = n.id
             if (n.kind === "module") {
                 el.innerHTML =
-                    `<div class="head"><span class="kind">MOD</span><span class="name"></span><span class="chev">${
-                        iconSvg("chevron-right")
-                    }</span></div><div class="body"></div><span class="handle l"></span><span class="handle r"></span>`
+                    `<div class="head"><span class="kind">MOD</span><span class="name"></span><span class="chev">${CHEVRON_SVG}</span></div><div class="body"></div><span class="handle l"></span><span class="handle r"></span>`
                 el.querySelector(".name")!.textContent = n.label
             } else {
                 if (this.isOrphan(n.id)) {
@@ -720,7 +794,8 @@ export class FlowGraph {
                 el.innerHTML =
                     `<span class="name"></span><span class="rate"></span><span class="type"></span><span class="handle l"></span><span class="handle r"></span>`
                 el.querySelector(".name")!.textContent = n.label
-                el.querySelector(".type")!.textContent = n.msgType || transportLabel(n.transport).toUpperCase() || ""
+                el.querySelector(".type")!.textContent = n.msgType ||
+                    transportLabel(n.transport).toUpperCase() || ""
             }
             this.viewport.appendChild(el)
             n.el = el
@@ -899,7 +974,10 @@ export class FlowGraph {
         const pad = 80
         const w = maxX - minX + pad * 2
         const h = maxY - minY + pad * 2
-        this.view.k = Math.max(0.2, Math.min(1.4, Math.min(innerWidth / w, innerHeight / h)))
+        this.view.k = Math.max(
+            0.2,
+            Math.min(1.4, Math.min(innerWidth / w, innerHeight / h)),
+        )
         this.view.x = (innerWidth - (minX + maxX) * this.view.k) / 2
         this.view.y = (innerHeight - (minY + maxY) * this.view.k) / 2
         this.applyView()
@@ -917,7 +995,9 @@ export class FlowGraph {
 
     // ── drag: pan & nodes; hover ──
     private nodeAt(target: EventTarget | null): Node | null {
-        const el = (target as Element | null)?.closest?.(".node") as HTMLElement | null
+        const el = (target as Element | null)?.closest?.(".node") as
+            | HTMLElement
+            | null
         return el ? this.nodes.get(el.dataset.id!) ?? null : null
     }
 
@@ -929,7 +1009,12 @@ export class FlowGraph {
             n.fixed = true
             this.reheat(0.7)
         } else {
-            this.panning = { sx: ev.clientX, sy: ev.clientY, ox: this.view.x, oy: this.view.y }
+            this.panning = {
+                sx: ev.clientX,
+                sy: ev.clientY,
+                ox: this.view.x,
+                oy: this.view.y,
+            }
             this.flow.classList.add("grabbing")
         }
     }
@@ -954,7 +1039,10 @@ export class FlowGraph {
             return
         }
         if (this.panning) {
-            if (Math.abs(ev.clientX - this.panning.sx) + Math.abs(ev.clientY - this.panning.sy) > 3) {
+            if (
+                Math.abs(ev.clientX - this.panning.sx) +
+                        Math.abs(ev.clientY - this.panning.sy) > 3
+            ) {
                 this.moved = true
             }
             this.view.x = this.panning.ox + (ev.clientX - this.panning.sx)
@@ -1033,7 +1121,8 @@ export class FlowGraph {
             const base = this.edgeIsTerminal(e) ? 1.1 : 2.4
             e.el.style.color = hot ? accent : rest
             e.el.style.stroke = hot ? accent : rest
-            e.el.style.strokeWidth = (on ? base + 1.1 : lit ? base + 0.6 : base).toFixed(1)
+            e.el.style.strokeWidth = (on ? base + 1.1 : lit ? base + 0.6 : base)
+                .toFixed(1)
             e.el.style.strokeDasharray = lit ? "5 6" : "none"
             if (e.lab) {
                 e.lab.style.color = hot ? accent : "var(--muted-fg)"
@@ -1135,7 +1224,10 @@ export class FlowGraph {
         ctx.font = `12px ${style.getPropertyValue("--sans") || "sans-serif"}`
         ctx.textBaseline = "top"
         ctx.fillText(header, 14, 14)
-        return canvas.toDataURL("image/png").replace(/^data:image\/png;base64,/, "")
+        return canvas.toDataURL("image/png").replace(
+            /^data:image\/png;base64,/,
+            "",
+        )
     }
 }
 
