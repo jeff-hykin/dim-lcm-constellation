@@ -63,7 +63,7 @@
                     version = "0.1.0";
                     src = ./frontend;
                     # `nix build .#frontend` prints the right hash when package-lock.json changes
-                    npmDepsHash = "sha256-GRNi6MXmdksAkA0NyIGQNAkO+BVp+w+p2MYbSh6VbiQ=";
+                    npmDepsHash = "sha256-MnYeQsaZukWNiGfR3vp+a0/PA5OApuFkdeqL73S/Oug=";
                     # npm still writes a git dependency (dimos-react) into its cache while installing
                     makeCacheWritable = true;
                     installPhase = "cp -r dist $out";
