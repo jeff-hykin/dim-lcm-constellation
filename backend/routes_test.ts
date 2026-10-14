@@ -17,10 +17,10 @@ const b64 = (bytes: number[]) => btoa(String.fromCharCode(...bytes))
 // a stand-in Desktop with one running blueprint
 const desktop = Deno.serve({ port: 0, onListen: () => {} }, (request) => {
     const path = new URL(request.url).pathname
-    if (path === "/dimos/runs") {
+    if (path === "/dimos-gateway/runs") {
         return Response.json({ runs: [{ blueprint: "demo", started_at: "2026-10-03T00:00:00Z" }] })
     }
-    if (path === "/dimos/blueprints/demo") {
+    if (path === "/dimos-gateway/blueprints/demo") {
         return Response.json({
             modules: [
                 {
@@ -40,7 +40,7 @@ const desktop = Deno.serve({ port: 0, onListen: () => {} }, (request) => {
             ],
         })
     }
-    if (path === "/dimos/blueprints/stopped") {
+    if (path === "/dimos-gateway/blueprints/stopped") {
         // a newer dimos: wired topics (a remapped input meets its publisher), summaries, methods
         return Response.json({
             modules: [

@@ -86,7 +86,7 @@ export function normBase(channel: string): string {
     return segments[segments.length - 1]
 }
 
-/** A blueprint's modules and their in/out streams (Desktop's /dimos/blueprints/<name>) as a module↔topic graph. */
+/** A blueprint's modules and their in/out streams (Desktop's /dimos-gateway/blueprints/<name>) as a module↔topic graph. */
 export function buildGraph(name: string, info: { modules?: unknown[] }): Graph {
     const modules: Record<string, ModuleCard> = {}
     const edges: GraphEdge[] = []
@@ -537,7 +537,7 @@ export class Monitor {
 
     /** Any blueprint's module graph from its static wiring (running or not; no traffic). */
     async blueprintGraph(name: string): Promise<Graph> {
-        const info = await this.fetchDesktop(`/dimos/blueprints/${encodeURIComponent(name)}`)
+        const info = await this.fetchDesktop(`/dimos-gateway/blueprints/${encodeURIComponent(name)}`)
         if (!info || !Array.isArray(info.modules)) {
             throw new HttpError(502, `Desktop couldn't describe the blueprint ${name}`)
         }
@@ -547,12 +547,12 @@ export class Monitor {
     /** Re-read the running blueprint from Desktop; true when the graph changed. */
     async refreshGraph(): Promise<boolean> {
         const fetchJson = (path: string) => this.fetchDesktop(path)
-        const runs: { blueprint: string; started_at?: string }[] = (await fetchJson("/dimos/runs"))?.runs ?? []
+        const runs: { blueprint: string; started_at?: string }[] = (await fetchJson("/dimos-gateway/runs"))?.runs ?? []
         let next: Graph = { blueprint: "", modules: {}, edges: [] }
         if (runs.length) {
             runs.sort((a, b) => String(a.started_at).localeCompare(String(b.started_at)))
             const active = runs[runs.length - 1].blueprint
-            const info = await fetchJson(`/dimos/blueprints/${encodeURIComponent(active)}`)
+            const info = await fetchJson(`/dimos-gateway/blueprints/${encodeURIComponent(active)}`)
             next = info && Array.isArray(info.modules)
                 ? buildGraph(active, info)
                 : { blueprint: active, modules: {}, edges: [], unknown: true }

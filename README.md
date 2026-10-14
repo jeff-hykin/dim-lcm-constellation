@@ -15,12 +15,12 @@ panel shows dtop's per-worker CPU/RAM (from `/resource_stats`, for blueprints ru
   prints NDJSON metadata (channel, count, bytes) every 50 ms; payloads are never decoded, except `/resource_stats` and a
   `sample <channel>` asked for on stdin.
 - `backend/` (Deno) runs the spy, keeps every channel's 5 s rate, sizes and 60 s history, reads the running blueprint
-  from Desktop (`/dimos/runs`, `/dimos/blueprints/<name>`), and serves it all as HTTP endpoints (`backend/routes.ts`),
-  which `dimos.yaml`'s `agent:` lists, so Desktop's agent can call everything the page does. Pages follow changes over
-  zenoh (Desktop's docs/events.md): the backend publishes through Desktop's relay on its frontend topics `events`
-  (graph, settings, paused, reset, workers, view-request; ordered), `stats` (2/s) and `packets` (20/s), the last two
-  only while a page says it's open (`POST api/pages/<id>` every 10 s); a page answers a view-request with
-  `POST api/views/<id>`.
+  from Desktop (`/dimos-gateway/runs`, `/dimos-gateway/blueprints/<name>`), and serves it all as HTTP endpoints
+  (`backend/routes.ts`), which `dimos.yaml`'s `agent:` lists, so Desktop's agent can call everything the page does.
+  Pages follow changes over zenoh (Desktop's docs/events.md): the backend publishes through Desktop's relay on its
+  frontend topics `events` (graph, settings, paused, reset, workers, view-request; ordered), `stats` (2/s) and `packets`
+  (20/s), the last two only while a page says it's open (`POST api/pages/<id>` every 10 s); a page answers a
+  view-request with `POST api/views/<id>`.
 - `frontend/` (TypeScript, Vite, React) draws the graph (DOM nodes + an SVG edge layer, force or Graphviz layouts).
 
 Endpoints include `GET api/topics` (rate, bandwidth, message size, last seen, publishers/subscribers per channel),
